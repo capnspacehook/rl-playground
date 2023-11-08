@@ -2,11 +2,13 @@
 
 import argparse
 import datetime
+import copy
 import os
 from pathlib import Path
 
 import pandas
-from sb3_contrib import QRDQN
+
+# from sb3_contrib import QRDQN
 from stable_baselines3 import PPO
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
@@ -15,6 +17,11 @@ import wandb
 
 from callbacks import RecordAndEvalCallback
 from rl_playground.envs.pyboy.register import createPyboyEnv
+
+
+def vecNormalizePath(checkpointPath: str) -> str:
+    dir, file = os.path.split(checkpointPath)
+    return os.path.join(dir, f"{os.path.splitext(file)[0]}_vn.pkl")
 
 
 def train(args):
@@ -53,9 +60,10 @@ def train(args):
     projectName = gameName.replace("_", " ").title()
 
     config = envSettings.hyperParameters(args.algorithm)
+    config["device"] = args.device
     # copy config so wandb callback doesn't include extraneous keys set
     # by the algorithm constructor
-    wabConfig = config.copy()
+    wabConfig = copy.deepcopy(config)
     wabConfig["algorithm"] = args.algorithm
     wabConfig["parallel_envs"] = numTrainingEnvs
 
@@ -71,9 +79,7 @@ def train(args):
 
     if args.model_checkpoint:
         if envSettings.normalizeObservation():
-            dir, file = os.path.split(args.model_checkpoint)
-            path = os.path.join(dir, f"{os.path.splitext(file)[0]}_vn.pkl")
-
+            path = vecNormalizePath(args.model_checkpoint)
             trainingEnv = VecNormalize.load(path, trainingEnv)
             evalEnv = VecNormalize.load(path, evalEnv)
             evalEnv.training = False
@@ -89,6 +95,7 @@ def train(args):
                 evalEnv.gamma = config["gamma"]
 
         config["env"] = trainingEnv
+        config["device"] = args.device
         config["tensorboard_log"] = "tensorboard"
         config["verbose"] = 1
         model = args.algo(**config)
@@ -151,6 +158,10 @@ def evaluate(args):
         args.rom, render=args.render, speed=args.emulation_speed, isEval=True
     )
     env = DummyVecEnv([lambda: env])
+    env = VecNormalize.load(vecNormalizePath(args.model_checkpoint), env)
+    env.training = False
+    env.norm_reward = False
+
     model = args.algo.load(args.model_checkpoint, env=env)
 
     obs = env.reset()
@@ -300,6 +311,12 @@ if __name__ == "__main__":
         type=int,
         default=500_000,
         help="evaluate the model every n steps",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="device to use to train, cpu, cuda or auto",
     )
     parser.add_argument(
         "--disable-wandb",
