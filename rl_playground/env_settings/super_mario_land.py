@@ -39,7 +39,7 @@ ppoConfig = {
     "clip_range": 0.2,
     "ent_coef": 1.080365148093321e-05,
     "gae_lambda": 0.8,
-    "gamma": 0.98,
+    "gamma": 0.99,
     "learning_rate": 6.160438419274751e-05,
     "max_grad_norm": 0.9,
     "n_epochs": 10,
@@ -115,6 +115,7 @@ class MarioLandSettings(EnvSettings):
         self.pyboy = pyboy
         self.gameWrapper = self.pyboy.game_wrapper()
         self.isEval = isEval
+        self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
         self.stateFiles = sorted(
@@ -130,14 +131,19 @@ class MarioLandSettings(EnvSettings):
 
         self.evalNoProgress = 0
 
-        # reset game state
-        state = random.choice(self.stateFiles)
+        # reset game state to a random level
+        self.stateIdx = random.randint(0, len(self.stateFiles) - 1)
         if self.isEval:
-            state = self.stateFiles[self.evalStateCounter]
+            # evaluate levels in order
+            self.stateIdx = self.evalStateCounter
             self.evalStateCounter += 1
             if self.evalStateCounter == len(self.stateFiles):
                 self.evalStateCounter = 0
-        with open(state, "rb") as f:
+
+        self._loadLevel()
+
+    def _loadLevel(self):
+        with open(self.stateFiles[self.stateIdx], "rb") as f:
             self.pyboy.load_state(f)
 
         # seed randomizer
@@ -152,23 +158,24 @@ class MarioLandSettings(EnvSettings):
 
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
-            # advance until time left starts getting added to score
-            for _ in range(curState.statusTimer + 64):
-                self.pyboy.tick()
-            # advance until time left has been depleted
-            for _ in range(curState.timeLeft):
-                self.pyboy.tick()
-            # advance until next level loads
-            # get updated timer value
-            for _ in range(self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL) + 11):
-                self.pyboy.tick()
+            # if we're evaluating and the level is cleared return, the
+            # episode is over; otherwise load the next level directly
+            # to avoid processing unnecessary frames and the AI playing
+            # levels we don't want it to
+            if self.isEval:
+                return 50, curState
+            else:
+                self.stateIdx += 1
+                if self.stateIdx == len(self.stateFiles):
+                    self.stateIdx = 0
+                self._loadLevel()
 
-            curState = self.gameState()
+                curState = self.gameState()
 
-        # reset level progress max on new level
-        if self._levelCleared(prevState, curState):
+            # reset level progress max on new level
             self.gameWrapper._level_progress_max = curState.realXPos
             curState._levelProgressMax = curState.realXPos
+
             return 50, curState
 
         # add time punishment every step to encourage speed more
@@ -208,14 +215,6 @@ class MarioLandSettings(EnvSettings):
 
         return reward, curState
 
-    def _levelCleared(
-        self, prevState: MarioLandGameState, curState: MarioLandGameState
-    ) -> bool:
-        return max(
-            curState.world[0] - prevState.world[0],
-            curState.world[1] - prevState.world[1],
-        )
-
     def observation(self, gameState: MarioLandGameState) -> Any:
         obs = self.gameWrapper._game_area_np()
         # make 20x16 array a 1x320 array so it's Box compatible
@@ -228,9 +227,15 @@ class MarioLandSettings(EnvSettings):
     ) -> bool:
         return self._isDead(curState)
 
-    def truncated(self, prevState: GameState, curState: GameState) -> bool:
-        # if no forward progress has been made in 15s, stop the eval episode
-        return self.isEval and self.evalNoProgress == 900
+    def truncated(
+        self, prevState: MarioLandGameState, curState: MarioLandGameState
+    ) -> bool:
+        # if no forward progress has been made in 15s, end the eval episode
+        # if the level is completed end this episode so the next level
+        # isn't played twice
+        return self.isEval and (
+            self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR
+        )
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
         return curState.deadJumpTimer != 0 or curState.statusTimer == TIMER_DEATH
