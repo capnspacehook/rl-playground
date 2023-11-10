@@ -148,8 +148,6 @@ class MarioLandSettings(EnvSettings):
             self.evalStateCounter = 0
             return
 
-        self.evalNoProgress = 0
-
         # reset game state to a random level
         self.stateIdx = random.randint(0, len(self.stateFiles) - 1)
         if self.isEval:
@@ -178,6 +176,10 @@ class MarioLandSettings(EnvSettings):
 
         # seed randomizer
         self.gameWrapper._set_timer_div(None)
+
+        # reset max level progress
+        self.gameWrapper._level_progress_max = 0
+        self.evalNoProgress = 0
 
         # if we're starting at a level checkpoint do nothing for a random
         # amount of frames to make object placements varied
