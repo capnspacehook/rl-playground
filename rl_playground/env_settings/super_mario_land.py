@@ -1,7 +1,7 @@
 import itertools
 from typing import Any, Dict
 from os import listdir
-from os.path import isfile, join
+from os.path import basename, isfile, join, splitext
 import random
 from pathlib import Path
 
@@ -39,7 +39,7 @@ ppoConfig = {
     "clip_range": 0.2,
     "ent_coef": 1.080365148093321e-05,
     "gae_lambda": 0.8,
-    "gamma": 0.99,
+    "gamma": 0.995,
     "learning_rate": 6.160438419274751e-05,
     "max_grad_norm": 0.9,
     "n_epochs": 10,
@@ -49,6 +49,8 @@ ppoConfig = {
         net_arch=dict(pi=[256, 256], vf=[256, 256]),
     ),
 }
+
+RANDOM_NOOP_FRAMES = 60
 
 STATUS_TIMER_MEM_VAL = 0xFFA6
 DEAD_JUMP_TIMER_MEM_VAL = 0xC0AC
@@ -74,11 +76,11 @@ class MarioLandGameState(GameState):
         # Find the real level progress x
         levelBlock = pyboy.get_memory_value(0xC0AB)
         # C202 Mario's X position relative to the screen
-        marioX = pyboy.get_memory_value(0xC202)
+        xPos = pyboy.get_memory_value(0xC202)
         scx = pyboy.botsupport_manager().screen().tilemap_position_list()[16][0]
         real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
 
-        self.realXPos = levelBlock * 16 + real + marioX
+        self.realXPos = levelBlock * 16 + real + xPos
         self.timeLeft = self.gameWrapper.time_left
         self.livesLeft = self.gameWrapper.lives_left
         self.score = self.gameWrapper.score
@@ -122,6 +124,23 @@ class MarioLandSettings(EnvSettings):
             [join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))]
         )
 
+        self.stateCheckpoint = 0
+        self.currentCheckpoint = 0
+        self.nextCheckpoint = 0
+        self.levelCheckpoints = {
+            (1, 1): [950, 1605],
+            (1, 2): [1150, 1840],
+            (2, 1): [855, 1610],
+            (2, 2): [870, 1975],
+            (3, 1): [2130, 2784],
+            (3, 2): [930, 1980],
+            (4, 1): [865, 1970],
+            (4, 2): [980, 2150],
+        }
+
+        # so level progress max will be set
+        self.gameWrapper.start_game()
+
     def reset(self, options: dict[str, Any] | None = None):
         # this will be passed before evals are started, reset the eval
         # state counter so all evals will start at the same state
@@ -136,18 +155,48 @@ class MarioLandSettings(EnvSettings):
         if self.isEval:
             # evaluate levels in order
             self.stateIdx = self.evalStateCounter
-            self.evalStateCounter += 1
-            if self.evalStateCounter == len(self.stateFiles):
+            # don't start from checkpoints
+            self.evalStateCounter += 3
+            if self.evalStateCounter >= len(self.stateFiles):
                 self.evalStateCounter = 0
 
         self._loadLevel()
 
     def _loadLevel(self):
-        with open(self.stateFiles[self.stateIdx], "rb") as f:
+        stateFile = self.stateFiles[self.stateIdx]
+        with open(stateFile, "rb") as f:
             self.pyboy.load_state(f)
+
+        # get checkpoint number from state filename
+        stateFile = basename(splitext(stateFile)[0])
+        world = int(stateFile[0])
+        level = int(stateFile[2])
+        self.stateCheckpoint = int(stateFile[4])
+        self.currentCheckpoint = self.stateCheckpoint
+
+        self._setNextCheckpoint((world, level), self.stateCheckpoint)
 
         # seed randomizer
         self.gameWrapper._set_timer_div(None)
+
+        # if we're starting at a level checkpoint do nothing for a random
+        # amount of frames to make object placements varied
+        if self.stateCheckpoint != 0:
+            for _ in range(random.randint(0, RANDOM_NOOP_FRAMES)):
+                self.pyboy.tick()
+
+        # level checkpoints get less time
+        timerHundreds = 4 - self.stateCheckpoint
+
+        # set level timer
+        self.pyboy.set_memory_value(0x9831, timerHundreds)
+        self.pyboy.set_memory_value(0x9832, 0)
+        self.pyboy.set_memory_value(0x9833, 0)
+
+    def _setNextCheckpoint(self, world, currentCheckpoint) -> int:
+        self.nextCheckpoint = 0
+        if currentCheckpoint < 2:
+            self.nextCheckpoint = self.levelCheckpoints[world][self.stateCheckpoint]
 
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()
@@ -165,8 +214,9 @@ class MarioLandSettings(EnvSettings):
             if self.isEval:
                 return 50, curState
             else:
-                self.stateIdx += 1
-                if self.stateIdx == len(self.stateFiles):
+                # load start of next level, not a level checkpoint
+                self.stateIdx += (2 - self.stateCheckpoint) + 1
+                if self.stateIdx >= len(self.stateFiles):
                     self.stateIdx = 0
                 self._loadLevel()
 
@@ -174,13 +224,24 @@ class MarioLandSettings(EnvSettings):
 
             # reset level progress max on new level
             self.gameWrapper._level_progress_max = curState.realXPos
-            curState._levelProgressMax = curState.realXPos
+            curState.levelProgressMax = curState.realXPos
 
             return 50, curState
 
         # add time punishment every step to encourage speed more
         clock = -0.25
         movement = curState.realXPos - prevState.realXPos
+
+        # reward for passing checkpoints
+        checkpoint = 0
+        if (
+            curState.levelProgressMax != prevState.levelProgressMax
+            and self.nextCheckpoint != 0
+            and curState.levelProgressMax >= self.nextCheckpoint
+        ):
+            self.currentCheckpoint += 1
+            self._setNextCheckpoint(curState.world, self.currentCheckpoint)
+            checkpoint = 50
 
         if self.isEval:
             if curState.levelProgressMax - prevState.levelProgressMax == 0:
@@ -211,7 +272,7 @@ class MarioLandSettings(EnvSettings):
             elif curState.powerupStatus == STATUS_STAR:
                 powerup = 30
 
-        reward = clock + movement + powerup
+        reward = clock + movement + checkpoint + powerup
 
         return reward, curState
 
@@ -299,14 +360,13 @@ class MarioLandSettings(EnvSettings):
                 return {}
 
     def evalEpisodes(self) -> int:
-        return len(self.stateFiles)
+        return len(self.stateFiles) // 3
 
     def gameState(self):
         return MarioLandGameState(self.pyboy)
 
     def printGameState(self, state: MarioLandGameState):
-        print(f"Fake level progress: {self.gameWrapper.level_progress}")
-        print(f"Real level progress: {state.realXPos}")
+        print(f"Level progress: {state.realXPos}")
         print(f"Max level progress: {state.levelProgressMax}")
         print(f"Lives left: {state.livesLeft}")
         print(f"Powerup: {state.powerupStatus}")
