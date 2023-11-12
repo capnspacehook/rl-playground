@@ -53,7 +53,9 @@ def train(args):
         set_random_seed(seed)
         return _init
 
-    numTrainingEnvs = os.cpu_count() if args.parallel_envs == 0 else args.parallel_envs
+    numTrainingEnvs = (
+        os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
+    )
     trainingEnv = SubprocVecEnv([makeEnv(i) for i in range(numTrainingEnvs)])
     evalEnv = DummyVecEnv([makeEnv(0, isEval=True)])
 

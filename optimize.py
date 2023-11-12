@@ -1,9 +1,14 @@
 #!/usr/bin/env/python3
 
+
+import argparse
+import ast
 import os
+from datetime import datetime
+from os import listdir
+from os.path import isfile, join
 from typing import Any, Callable, Dict, Union
 
-from datetime import datetime
 import gymnasium
 import numpy as np
 import optuna
@@ -20,12 +25,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNorm
 
 from rl_playground.envs.pyboy.register import createPyboyEnv
 
-N_TRIALS = 100
-N_STARTUP_TRIALS = 5
-N_EVALUATIONS = 20
-N_TIMESTEPS = int(5e6)
-N_TRAINING_ENVS = 48
-EVAL_FREQ = (N_TIMESTEPS // N_EVALUATIONS) // N_TRAINING_ENVS
+# TODO: make dynamic
 N_EVAL_EPISODES = 8
 
 DEFAULT_QRDQN_HYPERPARAMS = {
@@ -105,7 +105,7 @@ def sample_her_params(
     return hyperparams
 
 
-def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
+def sample_ppo_params(trial: optuna.Trial, numTrainingEnvs: int) -> Dict[str, Any]:
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128, 256, 512, 1024])
     clip_range = trial.suggest_categorical("clip_range", [0.1, 0.2, 0.3, 0.4])
     ent_coef = trial.suggest_float("ent_coef", 0.00000001, 0.1, log=True)
@@ -156,7 +156,7 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
 
     vf_coef = trial.suggest_float("vf_coef", 0, 1)
 
-    bufferSize = N_TRAINING_ENVS * n_steps
+    bufferSize = numTrainingEnvs * n_steps
     if bufferSize % batch_size > 0:
         batch_size = n_steps
 
@@ -202,9 +202,10 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
 
 
 class TimeLimitPruner(BasePruner):
-    def __init__(self, wrappedPruner: BasePruner) -> None:
+    def __init__(self, wrappedPruner: BasePruner, evalsPerTrial: int) -> None:
         self.curTrialNum = 0
         self.lastCalled = None
+        self.evalsPerTrial = evalsPerTrial
         self.wrappedPruner = wrappedPruner
 
     def prune(
@@ -231,7 +232,7 @@ class TimeLimitPruner(BasePruner):
             if lastCalled is not None:
                 sinceLastCalled = now - lastCalled
                 if sinceLastCalled.total_seconds() >= avgDuration // (
-                    N_EVALUATIONS // 2.5
+                    self.evalsPerTrial // 2.5
                 ):
                     return True
 
@@ -293,122 +294,143 @@ def makeEnv(rank: int, seed: int = 0, isEval=False):
     return _init
 
 
-def objective(trial: optuna.Trial) -> float:
-    kwargs = DEFAULT_PPO_HYPERPARAMS.copy()
-    # Sample hyperparameters.
-    hyperparams = sample_ppo_params(trial)
-    kwargs.update(hyperparams)
+def createObjective(numTrainingEnvs: int, evalFreq: int, steps: int):
+    def _objective(trial: optuna.Trial) -> float:
+        kwargs = DEFAULT_PPO_HYPERPARAMS.copy()
+        # Sample hyperparameters
+        hyperparams = sample_ppo_params(trial, numTrainingEnvs)
+        kwargs.update(hyperparams)
 
-    trainingEnv = SubprocVecEnv([makeEnv(i) for i in range(N_TRAINING_ENVS)])
-    trainingEnv = VecNormalize(trainingEnv)
-    evalEnv = DummyVecEnv([makeEnv(0, True)])
-    evalEnv = VecNormalize(evalEnv, training=False, norm_reward=False)
-    if "gamma" in hyperparams:
-        trainingEnv.gamma = hyperparams["gamma"]
-        evalEnv.gamma = hyperparams["gamma"]
+        trainingEnv = SubprocVecEnv([makeEnv(i) for i in range(numTrainingEnvs)])
+        trainingEnv = VecNormalize(trainingEnv)
+        evalEnv = DummyVecEnv([makeEnv(0, True)])
+        evalEnv = VecNormalize(evalEnv, training=False, norm_reward=False)
+        if "gamma" in hyperparams:
+            trainingEnv.gamma = hyperparams["gamma"]
+            evalEnv.gamma = hyperparams["gamma"]
 
-    kwargs["env"] = trainingEnv
-    model = PPO(**kwargs)
+        kwargs["env"] = trainingEnv
+        model = PPO(**kwargs)
 
-    eval_callback = TrialEvalCallback(
-        evalEnv,
-        trial,
-        n_eval_episodes=N_EVAL_EPISODES,
-        eval_freq=EVAL_FREQ,
-        deterministic=True,
-    )
+        eval_callback = TrialEvalCallback(
+            evalEnv,
+            trial,
+            n_eval_episodes=N_EVAL_EPISODES,
+            eval_freq=evalFreq,
+            deterministic=True,
+        )
 
-    try:
-        model.learn(N_TIMESTEPS, callback=eval_callback)
-        # Free memory
-        model.env.close()
-        evalEnv.close()
-    except (AssertionError, ValueError) as e:
-        # Sometimes, random hyperparams can generate NaN
-        # Free memory
-        model.env.close()
-        evalEnv.close()
-        # Prune hyperparams that generate NaNs
-        print(e)
-        print("============")
-        print("Sampled hyperparams:")
-        print(hyperparams)
-        raise optuna.exceptions.TrialPruned() from e
+        try:
+            model.learn(steps, callback=eval_callback)
+            # Free memory
+            model.env.close()
+            evalEnv.close()
+        except (AssertionError, ValueError) as e:
+            # Sometimes, random hyperparams can generate NaN
+            # Free memory
+            model.env.close()
+            evalEnv.close()
+            # Prune hyperparams that generate NaNs
+            print(e)
+            print("============")
+            print("Sampled hyperparams:")
+            print(hyperparams)
+            raise optuna.exceptions.TrialPruned() from e
 
-    del model.env, evalEnv
-    del model
+        del model.env, evalEnv
+        del model
 
-    if eval_callback.is_pruned:
-        raise optuna.exceptions.TrialPruned()
+        if eval_callback.is_pruned:
+            raise optuna.exceptions.TrialPruned()
 
-    # Report best reward to prevent the trail being judged by a regression
-    return eval_callback.best_mean_reward
+        # Report best reward to prevent the trail being judged by a regression
+        return eval_callback.best_mean_reward
+
+    return _objective
 
 
 if __name__ == "__main__":
-    sampler = TPESampler(n_startup_trials=N_STARTUP_TRIALS, multivariate=True)
+    parser = argparse.ArgumentParser("optimize")
+    parser.add_argument("-n", "--study-name", type=str, help="name of optuna study")
+    parser.add_argument(
+        "-t", "--trials", type=int, default=100, help="total number of trials to run"
+    )
+    parser.add_argument(
+        "-s",
+        "--startup-trials",
+        type=int,
+        default=5,
+        help="number of initial random trials to run",
+    )
+    parser.add_argument(
+        "-l",
+        "--trial-steps",
+        type=int,
+        default=5e6,
+        help="maximun number of steps per trial",
+    )
+    parser.add_argument(
+        "--parallel-envs",
+        type=int,
+        default=0,
+        help="number of environments to run in parallel",
+    )
+    parser.add_argument(
+        "-e",
+        "--evaluations-per-trial",
+        type=int,
+        default=20,
+        help="number of evaluations to run per trial",
+    )
+    parser.add_argument(
+        "--trials-dir",
+        type=str,
+        default="./trials",
+        help="directory that contains trials to start the study with",
+    )
+    args = parser.parse_args()
+
+    trialFiles = [
+        join(args.trials_dir, f)
+        for f in listdir(args.trials_dir)
+        if isfile(join(args.trials_dir, f))
+    ]
+
+    # Don't count enqueued trials as random startup trials
+    startupTrials = args.startup_trials + len(trialFiles)
+    sampler = TPESampler(n_startup_trials=startupTrials, multivariate=True)
     # Prune the bottom 25% performing trials
     # Do not prune before 1/2 of the max budget is used.
     pruner = PercentilePruner(
         percentile=75,
-        n_startup_trials=N_STARTUP_TRIALS,
-        n_warmup_steps=N_EVALUATIONS // 2,
+        n_startup_trials=startupTrials,
+        n_warmup_steps=args.evaluations_per_trial // 2,
     )
-    pruner = TimeLimitPruner(pruner)
+    pruner = TimeLimitPruner(pruner, args.evaluations_per_trial)
 
     study = optuna.create_study(
         storage="mysql://root@localhost/optuna",
-        study_name="mario_land_ppo_longer2",
+        study_name=args.study_name,
         sampler=sampler,
         pruner=pruner,
         direction="maximize",
         load_if_exists=True,
     )
 
-    # TODO: load these from filrs in specified dir
-    # add default PPO hyperparams
-    study.enqueue_trial(
-        {
-            "batch_size": 64,
-            "clip_range": 0.2,
-            "ent_coef": 0.00000001,
-            "gae_lambda": 0.95,
-            "gamma": 0.99,
-            "learning_rate": 3e-4,
-            "lr_schedule": "constant",
-            "max_grad_norm": 0.5,
-            "n_epochs": 10,
-            "n_steps": 2048,
-            "activation_fn": "tanh",
-            "net_arch": "small",
-            "vf_coef": 0.5,
-        },
-        skip_if_exists=True,
-    )
+    for trialFile in trialFiles:
+        with open(trialFile, "r") as f:
+            trial = ast.literal_eval(f.read())
+            study.enqueue_trial(trial, skip_if_exists=True)
 
-    study.enqueue_trial(
-        {
-            "batch_size": 512,
-            "clip_range": 0.2,
-            "ent_coef": 1.080365148093321e-05,
-            "gae_lambda": 0.8,
-            "gamma": 0.99,
-            "learning_rate": 6.160438419274751e-05,
-            "lr_schedule": "constant",
-            "max_grad_norm": 0.9,
-            "n_epochs": 10,
-            "n_steps": 256,
-            "activation_fn": "tanh",
-            "net_arch": "medium",
-            "vf_coef": 0.21730023144009505,
-        },
-        skip_if_exists=True,
+    numTrainingEnvs = (
+        os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
     )
+    evalFreq = (args.trial_steps // args.evaluations_per_trial) // numTrainingEnvs
 
     try:
         study.optimize(
-            objective,
-            n_trials=N_TRIALS,
+            createObjective(numTrainingEnvs, evalFreq, args.trial_steps),
+            n_trials=args.trials,
             show_progress_bar=True,
             gc_after_trial=True,
         )
