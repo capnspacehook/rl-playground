@@ -35,7 +35,7 @@ def train(args):
         runName += "_" + args.run_name
 
     gameName = os.path.basename(os.path.splitext(args.rom)[0])
-    saveDir = Path("checkpoints") / gameName / runName
+    saveDir = Path("checkpoints", "train", gameName, runName)
     saveDir.mkdir(parents=True)
 
     def makeEnv(rank: int, isEval: bool = False, seed: int = 0):
