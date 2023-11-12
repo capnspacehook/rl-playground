@@ -203,15 +203,22 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
 
 
 class TimeLimitPruner(BasePruner):
-    def __init__(self, wrappedPruner: BasePruner, evalsPerTrial: int) -> None:
+    def __init__(
+        self, wrappedPruner: BasePruner, enqueuedTrials: int, evalsPerTrial: int
+    ) -> None:
         self.curTrialNum = 0
         self.lastCalled = None
+        self.enqueuedTrials = enqueuedTrials
         self.evalsPerTrial = evalsPerTrial
         self.wrappedPruner = wrappedPruner
 
     def prune(
         self, study: "optuna.study.Study", trial: "optuna.trial.FrozenTrial"
     ) -> bool:
+        # skip the enqueued trials, if any
+        if trial.number < self.enqueuedTrials:
+            return self.wrappedPruner.prune(study, trial)
+
         # reset lastCalled when a new trial is started
         if self.curTrialNum != trial.number:
             self.curTrialNum = trial.number
@@ -371,7 +378,7 @@ if __name__ == "__main__":
         n_startup_trials=startupTrials,
         n_warmup_steps=args.evaluations_per_trial // 2,
     )
-    pruner = TimeLimitPruner(pruner, args.evaluations_per_trial)
+    pruner = TimeLimitPruner(pruner, len(trialFiles), args.evaluations_per_trial)
 
     study = optuna.create_study(
         storage="mysql://root@localhost/optuna",
@@ -393,7 +400,7 @@ if __name__ == "__main__":
     evalFreq = (args.trial_steps // args.evaluations_per_trial) // numTrainingEnvs
 
     saveDir = Path("checkpoints", "optimize", args.study_name)
-    saveDir.mkdir(parents=True)
+    saveDir.mkdir(parents=True, exist_ok=True)
 
     try:
         study.optimize(
