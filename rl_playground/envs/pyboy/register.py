@@ -32,7 +32,6 @@ def createPyboyEnv(
     shouldRender = not isHyperparamOptimize and (render or isEval)
     pyboy = PyBoy(
         rom,
-        cgb=render,
         window_type="SDL2" if render else "headless",
         scale=4,
         debug=False,

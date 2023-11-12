@@ -2,7 +2,10 @@ from typing import Any, Dict, Optional
 
 import gymnasium as gym
 import numpy as np
+import optuna
+from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import TensorBoardOutputFormat, Video
 from stable_baselines3.common.vec_env import sync_envs_normalization
@@ -161,27 +164,78 @@ class RecordAndEvalCallback(BaseCallback):
                 if self.verbose >= 1:
                     print("New best mean reward!")
                 if self.best_model_save_path is not None:
-                    self.model.save(self.best_model_save_path + ".zip")
-
-                    # save replay buffer
-                    if (
-                        self.save_replay_buffer
-                        and hasattr(self.model, "replay_buffer")
-                        and self.model.replay_buffer is not None
-                    ):
-                        self.model.save_replay_buffer(
-                            self.best_model_save_path + "_rb.pkl"
-                        )
-
-                    # save VecNormalize settings
-                    if (
-                        self.save_vecnormalize
-                        and self.model.get_vec_normalize_env() is not None
-                    ):
-                        self.model.get_vec_normalize_env().save(
-                            self.best_model_save_path + "_vn.pkl"
-                        )
+                    saveModel(
+                        self.model,
+                        self.best_model_save_path,
+                        self.save_replay_buffer,
+                        self.save_vecnormalize,
+                    )
 
                 self.best_mean_reward = float(mean_reward)
 
         return True
+
+
+class TrialEvalCallback(EvalCallback):
+    def __init__(
+        self,
+        eval_env: gym.Env,
+        trial: optuna.Trial,
+        best_model_save_path: str,
+        n_eval_episodes: int = 5,
+        eval_freq: int = 10000,
+        deterministic: bool = True,
+        verbose: int = 0,
+    ):
+        super().__init__(
+            eval_env=eval_env,
+            n_eval_episodes=n_eval_episodes,
+            eval_freq=eval_freq,
+            deterministic=deterministic,
+            verbose=verbose,
+        )
+        self.trial = trial
+        self.eval_idx = 0
+        self._best_reward = 0
+        self.modelSavePath = str(best_model_save_path / f"rl_model_{trial.number}")
+        self.is_pruned = False
+
+    def _on_step(self) -> bool:
+        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            super()._on_step()
+            self.eval_idx += 1
+
+            if self.last_mean_reward > self._best_reward:
+                self._best_reward = self.last_mean_reward
+                saveModel(
+                    self.model,
+                    self.modelSavePath,
+                    saveReplayBuffer=False,
+                    saveVecNormalize=True,
+                )
+
+            self.trial.report(self.last_mean_reward, self.eval_idx)
+            # Prune trial if needed
+            if self.trial.should_prune():
+                self.is_pruned = True
+                return False
+
+        return True
+
+
+def saveModel(
+    model: BaseAlgorithm, savePath: str, saveReplayBuffer: bool, saveVecNormalize: bool
+):
+    model.save(savePath + ".zip")
+
+    # save replay buffer
+    if (
+        saveReplayBuffer
+        and hasattr(model, "replay_buffer")
+        and model.replay_buffer is not None
+    ):
+        model.save_replay_buffer(savePath + "_rb.pkl")
+
+    # save VecNormalize settings
+    if saveVecNormalize and model.get_vec_normalize_env() is not None:
+        model.get_vec_normalize_env().save(savePath + "_vn.pkl")

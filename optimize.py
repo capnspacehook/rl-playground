@@ -8,6 +8,7 @@ from datetime import datetime
 from os import listdir
 from os.path import isfile, join
 from typing import Any, Callable, Dict, Union
+from pathlib import Path
 
 import gymnasium
 import numpy as np
@@ -19,10 +20,10 @@ from optuna.trial import TrialState
 
 # from sb3_contrib import QRDQN
 from stable_baselines3 import PPO, HerReplayBuffer
-from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
+from callbacks import TrialEvalCallback
 from rl_playground.envs.pyboy.register import createPyboyEnv
 
 # TODO: make dynamic
@@ -245,43 +246,6 @@ class TimeLimitPruner(BasePruner):
         return self.wrappedPruner.prune(study, trial)
 
 
-class TrialEvalCallback(EvalCallback):
-    """Callback used for evaluating and reporting a trial."""
-
-    def __init__(
-        self,
-        eval_env: gymnasium.Env,
-        trial: optuna.Trial,
-        n_eval_episodes: int = 5,
-        eval_freq: int = 10000,
-        deterministic: bool = True,
-        verbose: int = 0,
-    ):
-        super().__init__(
-            eval_env=eval_env,
-            n_eval_episodes=n_eval_episodes,
-            eval_freq=eval_freq,
-            deterministic=deterministic,
-            verbose=verbose,
-        )
-        self.trial = trial
-        self.eval_idx = 0
-        self.is_pruned = False
-
-    def _on_step(self) -> bool:
-        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-            super()._on_step()
-            self.eval_idx += 1
-
-            self.trial.report(self.last_mean_reward, self.eval_idx)
-            # Prune trial if need.
-            if self.trial.should_prune():
-                self.is_pruned = True
-                return False
-
-        return True
-
-
 def makeEnv(rank: int, seed: int = 0, isEval=False):
     def _init():
         _, env = createPyboyEnv(
@@ -294,7 +258,7 @@ def makeEnv(rank: int, seed: int = 0, isEval=False):
     return _init
 
 
-def createObjective(numTrainingEnvs: int, evalFreq: int, steps: int):
+def createObjective(saveDir: str, numTrainingEnvs: int, evalFreq: int, steps: int):
     def _objective(trial: optuna.Trial) -> float:
         kwargs = DEFAULT_PPO_HYPERPARAMS.copy()
         # Sample hyperparameters
@@ -315,6 +279,7 @@ def createObjective(numTrainingEnvs: int, evalFreq: int, steps: int):
         eval_callback = TrialEvalCallback(
             evalEnv,
             trial,
+            saveDir,
             n_eval_episodes=N_EVAL_EPISODES,
             eval_freq=evalFreq,
             deterministic=True,
@@ -427,9 +392,12 @@ if __name__ == "__main__":
     )
     evalFreq = (args.trial_steps // args.evaluations_per_trial) // numTrainingEnvs
 
+    saveDir = Path("checkpoints", "optimize", args.study_name)
+    saveDir.mkdir(parents=True)
+
     try:
         study.optimize(
-            createObjective(numTrainingEnvs, evalFreq, args.trial_steps),
+            createObjective(saveDir, numTrainingEnvs, evalFreq, args.trial_steps),
             n_trials=args.trials,
             show_progress_bar=True,
             gc_after_trial=True,
