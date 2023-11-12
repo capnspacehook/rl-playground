@@ -3,12 +3,16 @@
 import os
 from typing import Any, Callable, Dict, Union
 
+from datetime import datetime
 import gymnasium
+import numpy as np
 import optuna
 import torch.nn as nn
-from optuna.pruners import MedianPruner
+from optuna.pruners import BasePruner, PercentilePruner
 from optuna.samplers import TPESampler
-from sb3_contrib import QRDQN
+from optuna.trial import TrialState
+
+# from sb3_contrib import QRDQN
 from stable_baselines3 import PPO, HerReplayBuffer
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.utils import set_random_seed
@@ -19,11 +23,10 @@ from rl_playground.envs.pyboy.register import createPyboyEnv
 N_TRIALS = 100
 N_STARTUP_TRIALS = 5
 N_EVALUATIONS = 20
-N_TIMESTEPS = int(2e6)
-N_TRAINING_ENVS = os.cpu_count()
+N_TIMESTEPS = int(5e6)
+N_TRAINING_ENVS = 48
 EVAL_FREQ = (N_TIMESTEPS // N_EVALUATIONS) // N_TRAINING_ENVS
 N_EVAL_EPISODES = 8
-
 
 DEFAULT_QRDQN_HYPERPARAMS = {
     "gradient_steps": -1,
@@ -34,6 +37,7 @@ DEFAULT_QRDQN_HYPERPARAMS = {
 
 DEFAULT_PPO_HYPERPARAMS = {
     "policy": "MlpPolicy",
+    "device": "cpu",
 }
 
 
@@ -102,7 +106,7 @@ def sample_her_params(
 
 
 def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
-    batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64, 128, 256, 512])
+    batch_size = trial.suggest_categorical("batch_size", [32, 64, 128, 256, 512, 1024])
     clip_range = trial.suggest_categorical("clip_range", [0.1, 0.2, 0.3, 0.4])
     ent_coef = trial.suggest_float("ent_coef", 0.00000001, 0.1, log=True)
     gae_lambda = trial.suggest_categorical(
@@ -116,9 +120,7 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
     )
     learning_rate = trial.suggest_float("learning_rate", 1e-5, 1, log=True)
 
-    lr_schedule = "constant"
-    # Uncomment to enable learning rate schedule
-    # lr_schedule = trial.suggest_categorical('lr_schedule', ['linear', 'constant'])
+    lr_schedule = trial.suggest_categorical("lr_schedule", ["linear", "constant"])
     if lr_schedule == "linear":
         learning_rate = linear_schedule(learning_rate)
 
@@ -138,7 +140,6 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
     net_arch = trial.suggest_categorical(
         "net_arch",
         [
-            # "tiny",
             "small",
             "medium",
             "large",
@@ -147,7 +148,7 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
     # Independent networks usually work best
     # when not working with images
     net_arch = {
-        # "tiny": dict(pi=[64], vf=[64]),
+        "tiny": dict(pi=[64], vf=[64]),
         "small": dict(pi=[64, 64], vf=[64, 64]),
         "medium": dict(pi=[256, 256], vf=[256, 256]),
         "large": dict(pi=[512, 512], vf=[512, 512]),
@@ -155,9 +156,9 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
 
     vf_coef = trial.suggest_float("vf_coef", 0, 1)
 
-    # TODO: account when using multiple envs
-    # if batch_size > n_steps:
-    #     batch_size = n_steps
+    bufferSize = N_TRAINING_ENVS * n_steps
+    if bufferSize % batch_size > 0:
+        batch_size = n_steps
 
     return {
         "batch_size": batch_size,
@@ -173,7 +174,7 @@ def sample_ppo_params(trial: optuna.Trial) -> Dict[str, Any]:
             # log_std_init=log_std_init,
             activation_fn=activation_fn,
             net_arch=net_arch,
-            ortho_init=False,
+            # ortho_init=False,
         ),
         "vf_coef": vf_coef,
     }
@@ -198,6 +199,49 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
         return progress_remaining * initial_value_
 
     return func
+
+
+class TimeLimitPruner(BasePruner):
+    def __init__(self, wrappedPruner: BasePruner) -> None:
+        self.curTrialNum = 0
+        self.lastCalled = None
+        self.wrappedPruner = wrappedPruner
+
+    def prune(
+        self, study: "optuna.study.Study", trial: "optuna.trial.FrozenTrial"
+    ) -> bool:
+        # reset lastCalled when a new trial is started
+        if self.curTrialNum != trial.number:
+            self.curTrialNum = trial.number
+            self.lastCalled = None
+
+        trials = study.get_trials(states=[TrialState.COMPLETE])
+        if len(trials) != 0:
+            durations = [
+                (t.datetime_complete - t.datetime_start).total_seconds() for t in trials
+            ]
+            avgDuration = np.mean(durations)
+
+            lastCalled = self.lastCalled
+            now = datetime.now()
+            self.lastCalled = now
+
+            # if this trial is on track to take over twice as long as
+            # the average trial, prune the trial
+            if lastCalled is not None:
+                sinceLastCalled = now - lastCalled
+                if sinceLastCalled.total_seconds() >= avgDuration // (
+                    N_EVALUATIONS // 2.5
+                ):
+                    return True
+
+            # if this trial has already run for over twice as long of
+            # the average trial, prune the trial
+            trialDuration = now - trial.datetime_start
+            if trialDuration.total_seconds() >= 2.0 * avgDuration:
+                return True
+
+        return self.wrappedPruner.prune(study, trial)
 
 
 class TrialEvalCallback(EvalCallback):
@@ -227,17 +271,21 @@ class TrialEvalCallback(EvalCallback):
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
             super()._on_step()
             self.eval_idx += 1
+
             self.trial.report(self.last_mean_reward, self.eval_idx)
             # Prune trial if need.
             if self.trial.should_prune():
                 self.is_pruned = True
                 return False
+
         return True
 
 
 def makeEnv(rank: int, seed: int = 0, isEval=False):
     def _init():
-        _, env = createPyboyEnv("games/super_mario_land.gb", isEval=isEval)
+        _, env = createPyboyEnv(
+            "games/super_mario_land.gb", isEval=isEval, isHyperparamOptimize=True
+        )
         env.reset(seed=seed + rank)
         return env
 
@@ -293,25 +341,31 @@ def objective(trial: optuna.Trial) -> float:
     if eval_callback.is_pruned:
         raise optuna.exceptions.TrialPruned()
 
-    return eval_callback.last_mean_reward
+    # Report best reward to prevent the trail being judged by a regression
+    return eval_callback.best_mean_reward
 
 
 if __name__ == "__main__":
     sampler = TPESampler(n_startup_trials=N_STARTUP_TRIALS, multivariate=True)
-    # Do not prune before 1/3 of the max budget is used.
-    pruner = MedianPruner(
-        n_startup_trials=N_STARTUP_TRIALS, n_warmup_steps=N_EVALUATIONS // 3
+    # Prune the bottom 25% performing trials
+    # Do not prune before 1/2 of the max budget is used.
+    pruner = PercentilePruner(
+        percentile=75,
+        n_startup_trials=N_STARTUP_TRIALS,
+        n_warmup_steps=N_EVALUATIONS // 2,
     )
+    pruner = TimeLimitPruner(pruner)
 
     study = optuna.create_study(
         storage="mysql://root@localhost/optuna",
-        study_name="mario_land_ppo",
+        study_name="mario_land_ppo_longer2",
         sampler=sampler,
         pruner=pruner,
         direction="maximize",
         load_if_exists=True,
     )
 
+    # TODO: load these from filrs in specified dir
     # add default PPO hyperparams
     study.enqueue_trial(
         {
@@ -320,13 +374,33 @@ if __name__ == "__main__":
             "ent_coef": 0.00000001,
             "gae_lambda": 0.95,
             "gamma": 0.99,
-            "max_grad_norm": 0.5,
             "learning_rate": 3e-4,
+            "lr_schedule": "constant",
+            "max_grad_norm": 0.5,
             "n_epochs": 10,
             "n_steps": 2048,
             "activation_fn": "tanh",
             "net_arch": "small",
             "vf_coef": 0.5,
+        },
+        skip_if_exists=True,
+    )
+
+    study.enqueue_trial(
+        {
+            "batch_size": 512,
+            "clip_range": 0.2,
+            "ent_coef": 1.080365148093321e-05,
+            "gae_lambda": 0.8,
+            "gamma": 0.99,
+            "learning_rate": 6.160438419274751e-05,
+            "lr_schedule": "constant",
+            "max_grad_norm": 0.9,
+            "n_epochs": 10,
+            "n_steps": 256,
+            "activation_fn": "tanh",
+            "net_arch": "medium",
+            "vf_coef": 0.21730023144009505,
         },
         skip_if_exists=True,
     )

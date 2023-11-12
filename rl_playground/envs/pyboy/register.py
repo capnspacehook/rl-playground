@@ -20,6 +20,7 @@ def createPyboyEnv(
     speed: int = 0,
     isEval: bool = False,
     isPlaytest: bool = False,
+    isHyperparamOptimize: bool = False,
     outputDir: Path = "",
 ):
     # silence useless pyboy logs
@@ -28,14 +29,16 @@ def createPyboyEnv(
     logger = logging.getLogger("pyboy.plugins.window_headless")
     logger.setLevel(logging.ERROR)
 
+    shouldRender = not isHyperparamOptimize and (render or isEval)
     pyboy = PyBoy(
         rom,
+        cgb=render,
         window_type="SDL2" if render else "headless",
         scale=4,
         debug=False,
         game_wrapper=True,
     )
-    pyboy._rendering(render or isEval)
+    pyboy._rendering(shouldRender)
     pyboy.set_emulation_speed(speed)
 
     envSettings = None
