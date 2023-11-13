@@ -379,11 +379,13 @@ if __name__ == "__main__":
 
     startupTrials = args.startup_trials
     if newStudy:
-        trialFiles = [
-            join(args.trials_dir, f)
-            for f in listdir(args.trials_dir)
-            if isfile(join(args.trials_dir, f))
-        ]
+        trialFiles = sorted(
+            [
+                join(args.trials_dir, f)
+                for f in listdir(args.trials_dir)
+                if isfile(join(args.trials_dir, f))
+            ]
+        )
         for trialFile in trialFiles:
             with open(trialFile, "r") as f:
                 trial = ast.literal_eval(f.read())
