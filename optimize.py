@@ -10,11 +10,10 @@ from os.path import isfile, join
 from typing import Any, Callable, Dict, Union
 from pathlib import Path
 
-import gymnasium
 import numpy as np
 import optuna
 import torch.nn as nn
-from optuna.pruners import BasePruner, PercentilePruner
+from optuna.pruners import BasePruner, MedianPruner
 from optuna.samplers import TPESampler
 from optuna.trial import TrialState
 
@@ -202,7 +201,7 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
     return func
 
 
-class TimeLimitPruner(BasePruner):
+class SlowTrialPruner(BasePruner):
     def __init__(
         self, wrappedPruner: BasePruner, enqueuedTrials: int, evalsPerTrial: int
     ) -> None:
@@ -215,16 +214,21 @@ class TimeLimitPruner(BasePruner):
     def prune(
         self, study: "optuna.study.Study", trial: "optuna.trial.FrozenTrial"
     ) -> bool:
-        # skip the enqueued trials, if any
-        if trial.number < self.enqueuedTrials:
-            return self.wrappedPruner.prune(study, trial)
-
         # reset lastCalled when a new trial is started
         if self.curTrialNum != trial.number:
             self.curTrialNum = trial.number
             self.lastCalled = None
 
-        trials = study.get_trials(states=[TrialState.COMPLETE])
+        # if no values have been reported yet just note when this trial started
+        if len(trial.intermediate_values) == 0:
+            self.lastCalled = datetime.now()
+            return False
+
+        # skip the enqueued trials, if any
+        if trial.number < self.enqueuedTrials:
+            return self.wrappedPruner.prune(study, trial)
+
+        trials = study.get_trials(deepcopy=False, states=(TrialState.COMPLETE,))
         if len(trials) != 0:
             durations = [
                 (t.datetime_complete - t.datetime_start).total_seconds() for t in trials
@@ -291,6 +295,9 @@ def createObjective(saveDir: str, numTrainingEnvs: int, evalFreq: int, steps: in
             eval_freq=evalFreq,
             deterministic=True,
         )
+
+        # let the SlowTrialPruner know a trial has started
+        trial.should_prune()
 
         try:
             model.learn(steps, callback=eval_callback)
@@ -362,37 +369,35 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    trialFiles = [
-        join(args.trials_dir, f)
-        for f in listdir(args.trials_dir)
-        if isfile(join(args.trials_dir, f))
-    ]
-
-    # Don't count enqueued trials as random startup trials
-    startupTrials = args.startup_trials + len(trialFiles)
-    sampler = TPESampler(n_startup_trials=startupTrials, multivariate=True)
-    # Prune the bottom 25% performing trials
-    # Do not prune before 1/2 of the max budget is used.
-    pruner = PercentilePruner(
-        percentile=75,
-        n_startup_trials=startupTrials,
-        n_warmup_steps=args.evaluations_per_trial // 2,
-    )
-    pruner = TimeLimitPruner(pruner, len(trialFiles), args.evaluations_per_trial)
-
     study = optuna.create_study(
         storage="mysql://root@localhost/optuna",
         study_name=args.study_name,
-        sampler=sampler,
-        pruner=pruner,
         direction="maximize",
         load_if_exists=True,
     )
+    newStudy = len(study.get_trials(deepcopy=False)) != 0
 
-    for trialFile in trialFiles:
-        with open(trialFile, "r") as f:
-            trial = ast.literal_eval(f.read())
-            study.enqueue_trial(trial, skip_if_exists=True)
+    startupTrials = args.startup_trials
+    if newStudy:
+        trialFiles = [
+            join(args.trials_dir, f)
+            for f in listdir(args.trials_dir)
+            if isfile(join(args.trials_dir, f))
+        ]
+        for trialFile in trialFiles:
+            with open(trialFile, "r") as f:
+                trial = ast.literal_eval(f.read())
+                study.enqueue_trial(trial, skip_if_exists=True)
+
+        # Don't count enqueued trials as random startup trials
+        startupTrials += len(trialFiles)
+
+    study.sampler = TPESampler(n_startup_trials=startupTrials, multivariate=True)
+    # Do not prune before 1/2 of the max budget is used.
+    pruner = MedianPruner(
+        n_startup_trials=startupTrials, n_warmup_steps=args.evaluations_per_trial // 2
+    )
+    study.pruner = SlowTrialPruner(pruner, len(trialFiles), args.evaluations_per_trial)
 
     numTrainingEnvs = (
         os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
