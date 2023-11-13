@@ -116,7 +116,7 @@ class RecordAndEvalCallback(BaseCallback):
             if self.verbose >= 1:
                 print("Evaluating model checkpoint")
 
-            # tell the base envs that an evaluation is starting
+            # tell the base env that an evaluation is starting
             self.eval_env.set_options({"_eval_starting": True})
             self.eval_env.reset()
             self.eval_env._reset_options()
@@ -124,9 +124,10 @@ class RecordAndEvalCallback(BaseCallback):
             episode_rewards, episode_lengths = evaluate_policy(
                 self.model,
                 self.eval_env,
-                callback=grab_screens,
                 n_eval_episodes=self._n_eval_episodes,
                 deterministic=self._deterministic,
+                callback=grab_screens,
+                return_episode_rewards=True,
             )
 
             # Add dimension to array so it's a 5-D array (the video encoder
@@ -179,11 +180,11 @@ class RecordAndEvalCallback(BaseCallback):
 class TrialEvalCallback(EvalCallback):
     def __init__(
         self,
-        eval_env: gym.Env,
+        eval_env: VecEnv,
         trial: optuna.Trial,
         best_model_save_path: str,
-        n_eval_episodes: int = 5,
-        eval_freq: int = 10000,
+        n_eval_episodes: int,
+        eval_freq: int,
         deterministic: bool = True,
         verbose: int = 0,
     ):
@@ -196,16 +197,21 @@ class TrialEvalCallback(EvalCallback):
         )
         self.trial = trial
         self.eval_idx = 0
-        self._best_reward = 0
+        self._best_reward = None
         self.modelSavePath = str(best_model_save_path / f"rl_model_{trial.number}")
         self.is_pruned = False
 
     def _on_step(self) -> bool:
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            # tell the base env that an evaluation is starting
+            self.eval_env.set_options({"_eval_starting": True})
+            self.eval_env.reset()
+            self.eval_env._reset_options()
+
             super()._on_step()
             self.eval_idx += 1
 
-            if self.last_mean_reward > self._best_reward:
+            if self._best_reward is None or self.last_mean_reward > self._best_reward:
                 self._best_reward = self.last_mean_reward
                 saveModel(
                     self.model,

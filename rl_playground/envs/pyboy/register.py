@@ -47,7 +47,12 @@ def createPyboyEnv(
         envSettings = MarioLandSettings(pyboy, isEval)
 
     env = PyBoyEnv(
-        pyboy, envSettings, render == render, isPlaytest=isPlaytest, outputDir=outputDir
+        pyboy,
+        envSettings,
+        render == render,
+        isEval=isEval,
+        isPlaytest=isPlaytest,
+        outputDir=outputDir,
     )
 
     env = SkipFrame(env, skip=frameStack)

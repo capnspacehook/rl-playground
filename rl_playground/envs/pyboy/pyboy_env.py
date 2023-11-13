@@ -15,6 +15,7 @@ class PyBoyEnv(Env):
         pyboy: PyBoy,
         envSettings: EnvSettings,
         render: bool = False,
+        isEval: bool = False,
         isPlaytest: bool = False,
         outputDir: Path = "",
     ) -> None:
@@ -22,6 +23,7 @@ class PyBoyEnv(Env):
         self.envSettings = envSettings
         self.prevGameState = None
         self._started = False
+        self.isEval = isEval
         self.isPlaytest = isPlaytest
         self.episodeNum = 0
         self.curInfo = dict()
@@ -66,8 +68,6 @@ class PyBoyEnv(Env):
         self.render_mode = None
         if render:
             self.render_mode = "rgb_array"
-
-        super().__init__()
 
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
@@ -116,6 +116,7 @@ class PyBoyEnv(Env):
         terminated = pyboyDone or self.envSettings.terminated(
             self.prevGameState, curGameState
         )
+        truncated = self.envSettings.truncated(self.prevGameState, curGameState)
 
         self.prevGameState = curGameState
 
@@ -123,7 +124,7 @@ class PyBoyEnv(Env):
             self.envSettings.observation(curGameState),
             reward,
             terminated,
-            self.envSettings.truncated(self.prevGameState, curGameState),
+            truncated,
             info,
         )
 
