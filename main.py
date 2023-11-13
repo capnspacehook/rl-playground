@@ -6,6 +6,7 @@ import copy
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas
 
 # from sb3_contrib import QRDQN
@@ -166,16 +167,23 @@ def evaluate(args):
 
     model = args.algo.load(args.model_checkpoint, env=env)
 
+    episodeRewards = []
     obs = env.reset()
     for _ in range(envSettings.evalEpisodes()):
         done = False
+        rewards = []
         try:
             while not done:
                 action, _ = model.predict(obs, deterministic=True)
-                obs, _, done, _ = env.step(action)
+                obs, reward, done, _ = env.step(action)
+                rewards.append(reward)
         except KeyboardInterrupt:
             pass
 
+        episodeRewards.append(sum(rewards))
+
+    print(episodeRewards)
+    print(f"Mean reward: {np.mean(episodeRewards)}")
     env.close()
 
 
