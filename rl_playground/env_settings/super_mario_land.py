@@ -196,7 +196,7 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(0x9832, 0)
         self.pyboy.set_memory_value(0x9833, 0)
 
-    def _setNextCheckpoint(self, world, currentCheckpoint) -> int:
+    def _setNextCheckpoint(self, world, currentCheckpoint):
         self.nextCheckpoint = 0
         if currentCheckpoint < 2:
             self.nextCheckpoint = self.levelCheckpoints[world][self.stateCheckpoint]

@@ -1,6 +1,6 @@
+from pathlib import Path
 from typing import Any, Dict, Optional
 
-import gymnasium as gym
 import numpy as np
 import optuna
 from stable_baselines3.common.base_class import BaseAlgorithm
@@ -57,7 +57,7 @@ class RecordAndEvalCallback(BaseCallback):
         eval_env: VecEnv,
         eval_freq: int = 0,
         n_eval_episodes: int = 1,
-        best_model_save_path: Optional[str] = None,
+        best_model_save_path: Optional[Path] = None,
         best_model_save_prefix: str = "rl_model",
         save_vecnormalize: bool = False,
         save_replay_buffer: bool = False,
@@ -79,14 +79,13 @@ class RecordAndEvalCallback(BaseCallback):
         self.best_mean_reward = -np.inf
         self.last_mean_reward = -np.inf
         self._n_eval_episodes = n_eval_episodes
-        self.best_model_save_path = best_model_save_path
         self.save_vecnormalize = save_vecnormalize
         self.save_replay_buffer = save_replay_buffer
         self._deterministic = deterministic
 
-        if self.best_model_save_path is not None:
+        if best_model_save_path is not None:
             self.best_model_save_path = str(
-                self.best_model_save_path / best_model_save_prefix
+                best_model_save_path / best_model_save_prefix
             )
 
     def _on_step(self) -> bool:
@@ -182,7 +181,7 @@ class TrialEvalCallback(EvalCallback):
         self,
         eval_env: VecEnv,
         trial: optuna.Trial,
-        best_model_save_path: str,
+        best_model_save_path: Path,
         n_eval_episodes: int,
         eval_freq: int,
         deterministic: bool = True,
@@ -197,7 +196,7 @@ class TrialEvalCallback(EvalCallback):
         )
         self.trial = trial
         self.eval_idx = 0
-        self._best_reward = None
+        self._best_reward: float | None = None
         self.modelSavePath = str(best_model_save_path / f"rl_model_{trial.number}")
         self.is_pruned = False
 

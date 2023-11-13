@@ -5,7 +5,7 @@ import pandas
 from gymnasium import Env
 from pyboy import PyBoy, WindowEvent
 
-from rl_playground.env_settings.env_settings import EnvSettings
+from rl_playground.env_settings.env_settings import GameState, EnvSettings
 
 
 # TODO: make env more generic and more input sending to EnvSettings
@@ -17,11 +17,11 @@ class PyBoyEnv(Env):
         render: bool = False,
         isEval: bool = False,
         isPlaytest: bool = False,
-        outputDir: Path = "",
+        outputDir: Path | None = None,
     ) -> None:
         self.pyboy = pyboy
         self.envSettings = envSettings
-        self.prevGameState = None
+        self.prevGameState: GameState | None = None
         self._started = False
         self.isEval = isEval
         self.isPlaytest = isPlaytest

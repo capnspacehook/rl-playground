@@ -206,7 +206,7 @@ class SlowTrialPruner(BasePruner):
         self, wrappedPruner: BasePruner, enqueuedTrials: int, evalsPerTrial: int
     ) -> None:
         self.curTrialNum = 0
-        self.lastCalled = None
+        self.lastCalled: datetime.datetime | None = None
         self.enqueuedTrials = enqueuedTrials
         self.evalsPerTrial = evalsPerTrial
         self.wrappedPruner = wrappedPruner
@@ -269,7 +269,7 @@ def makeEnv(rank: int, isEval=False, seed: int = 0):
     return _init
 
 
-def createObjective(saveDir: str, numTrainingEnvs: int, evalFreq: int, steps: int):
+def createObjective(saveDir: Path, numTrainingEnvs: int, evalFreq: int, steps: int):
     def _objective(trial: optuna.Trial) -> float:
         kwargs = DEFAULT_PPO_HYPERPARAMS.copy()
         # Sample hyperparameters
