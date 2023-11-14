@@ -134,7 +134,7 @@ class RecordAndEvalCallback(BaseCallback):
             screens = np.expand_dims(np.stack(screens), axis=0)
             self.logger.record(
                 "eval/video",
-                Video(screens, fps=12),
+                Video(screens, fps=20),  # TODO: find dynamically
                 exclude=("stdout", "log", "json", "csv"),
             )
 
