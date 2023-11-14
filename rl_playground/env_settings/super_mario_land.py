@@ -148,8 +148,6 @@ class MarioLandSettings(EnvSettings):
             self.evalStateCounter = 0
             return
 
-        # reset game state to a random level
-        self.stateIdx = random.randint(0, len(self.stateFiles) - 1)
         if self.isEval:
             # evaluate levels in order
             self.stateIdx = self.evalStateCounter
@@ -157,6 +155,9 @@ class MarioLandSettings(EnvSettings):
             self.evalStateCounter += 3
             if self.evalStateCounter >= len(self.stateFiles):
                 self.evalStateCounter = 0
+        else:
+            # reset game state to a random level
+            self.stateIdx = random.randint(0, len(self.stateFiles) - 1)
 
         self._loadLevel()
 

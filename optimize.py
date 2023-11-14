@@ -257,7 +257,7 @@ class SlowTrialPruner(BasePruner):
         return self.wrappedPruner.prune(study, trial)
 
 
-def makeEnv(rank: int, seed: int = 0, isEval=False):
+def makeEnv(rank: int, isEval=False, seed: int = 0):
     def _init():
         _, env = createPyboyEnv(
             "games/super_mario_land.gb", isEval=isEval, isHyperparamOptimize=True
@@ -278,7 +278,7 @@ def createObjective(saveDir: str, numTrainingEnvs: int, evalFreq: int, steps: in
 
         trainingEnv = SubprocVecEnv([makeEnv(i) for i in range(numTrainingEnvs)])
         trainingEnv = VecNormalize(trainingEnv)
-        evalEnv = DummyVecEnv([makeEnv(0, True)])
+        evalEnv = DummyVecEnv([makeEnv(0, isEval=True)])
         evalEnv = VecNormalize(evalEnv, training=False, norm_reward=False)
         if "gamma" in hyperparams:
             trainingEnv.gamma = hyperparams["gamma"]
@@ -290,7 +290,7 @@ def createObjective(saveDir: str, numTrainingEnvs: int, evalFreq: int, steps: in
         eval_callback = TrialEvalCallback(
             evalEnv,
             trial,
-            saveDir,
+            best_model_save_path=saveDir,
             n_eval_episodes=N_EVAL_EPISODES,
             eval_freq=evalFreq,
             deterministic=True,
@@ -375,9 +375,10 @@ if __name__ == "__main__":
         direction="maximize",
         load_if_exists=True,
     )
-    newStudy = len(study.get_trials(deepcopy=False)) != 0
+    newStudy = len(study.get_trials(deepcopy=False)) == 0
 
     startupTrials = args.startup_trials
+    enqueuedTrials = 0
     if newStudy:
         trialFiles = sorted(
             [
@@ -392,14 +393,15 @@ if __name__ == "__main__":
                 study.enqueue_trial(trial, skip_if_exists=True)
 
         # Don't count enqueued trials as random startup trials
-        startupTrials += len(trialFiles)
+        enqueuedTrials = len(trialFiles)
+        startupTrials += enqueuedTrials
 
     study.sampler = TPESampler(n_startup_trials=startupTrials, multivariate=True)
     # Do not prune before 1/2 of the max budget is used.
     pruner = MedianPruner(
         n_startup_trials=startupTrials, n_warmup_steps=args.evaluations_per_trial // 2
     )
-    study.pruner = SlowTrialPruner(pruner, len(trialFiles), args.evaluations_per_trial)
+    study.pruner = SlowTrialPruner(pruner, enqueuedTrials, args.evaluations_per_trial)
 
     numTrainingEnvs = (
         os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
@@ -413,7 +415,6 @@ if __name__ == "__main__":
         study.optimize(
             createObjective(saveDir, numTrainingEnvs, evalFreq, args.trial_steps),
             n_trials=args.trials,
-            show_progress_bar=True,
             gc_after_trial=True,
         )
     except KeyboardInterrupt:
