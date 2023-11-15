@@ -6,7 +6,7 @@ import random
 from pathlib import Path
 
 import numpy as np
-import torch.nn as nn
+import flax.linen as nn
 from gymnasium.spaces import Box, Discrete, Space
 from pyboy import PyBoy, WindowEvent
 from pyboy.botsupport.constants import TILES
@@ -35,17 +35,18 @@ qrdqnConfig = {
 
 ppoConfig = {
     "policy": "MlpPolicy",
-    "batch_size": 512,
+    "batch_size": 64,
     "clip_range": 0.2,
-    "ent_coef": 1.080365148093321e-05,
-    "gae_lambda": 0.8,
-    "gamma": 0.995,
-    "learning_rate": 6.160438419274751e-05,
-    "max_grad_norm": 0.9,
-    "n_epochs": 10,
-    "n_steps": 256,
-    "vf_coef": 0.21730023144009505,
+    "ent_coef": 7.513020308749457e-06,
+    "gae_lambda": 0.98,
+    "gamma": 0.98,
+    "learning_rate": 3.183807492928217e-05,
+    "max_grad_norm": 5,
+    "n_epochs": 5,
+    "n_steps": 512,
+    "vf_coef": 0.33653746631712467,
     "policy_kwargs": dict(
+        activation_fn=nn.relu,
         net_arch=dict(pi=[256, 256], vf=[256, 256]),
     ),
 }
@@ -107,6 +108,187 @@ class MarioLandGameState(GameState):
             self.powerupStatus = STATUS_INVINCIBLE
 
 
+# Mario and Daisy
+base_scripts = (1, list(range(81)))
+plane = (2, list(range(99, 110)))
+submarine = (3, list(range(112, 122)))
+mario_fireball = (4, [96, 110, 122])
+
+# Bonuses
+coin = (10, [244])
+mushroom = (11, [131])
+flower = (12, [224, 229])
+star = (13, [134])
+heart = (14, [132])
+
+# Blocks
+common_blocks = (
+    [
+        142,
+        143,
+        221,
+        222,
+        231,
+        232,
+        233,
+        234,
+        235,
+        236,
+        301,
+        302,
+        303,
+        304,
+        340,
+        352,
+        353,
+        355,
+        356,
+        357,
+        358,
+        359,
+        360,
+        361,
+        362,
+        381,
+        382,
+        383,
+    ],
+)
+world_1_2_blocks = (20, [*common_blocks, 319])  # 319 is scenery on worlds 3 and 4
+world_3_4_blocks = (20, common_blocks)
+moving_blocks = (21, [230, 239])
+falling_block = (22, [238])
+bouncing_boulder = (23, [194, 195, 210, 211])
+pushable_blocks = (24, [128, 130, 354])  # 354 invisible on 2-2
+question_block = (25, [129])
+pipes = (26, list(range(368, 381)))
+spike = (27, [237])
+lever = (28, [255])  # Lever for level end
+
+# Enemies
+goomba = (30, [144])
+koopa = (31, [150, 151, 152, 153])
+shell = (32, [154, 155])
+explosion = (33, [157, 158])
+piranha_plant = (34, [146, 147, 148, 149])
+bill_launcher = (35, [135, 136])
+bill = (36, [249])
+
+# Level specific enemies
+sharedEnemy1 = [160, 161, 162, 163, 176, 177, 178, 179]
+moth = (37, sharedEnemy1)
+flying_moth = (38, [192, 193, 194, 195, 208, 209, 210, 211])
+arrow = (39, [172, 188])
+sharedEnemy2 = [164, 165, 166, 167, 180, 181, 182, 183]
+sphinx = (40, sharedEnemy2)
+sharedEnemy3 = [192, 193, 208, 209]
+bone_fish = (41, sharedEnemy3)
+seahorse = (42, sharedEnemy2)
+fireball = (43, [226])
+sharedEnemy4 = [196, 197, 198, 199, 212, 213, 214, 215]
+robot = (44, sharedEnemy4)
+fist_rock = (45, sharedEnemy2)
+flying_rock = (46, [171, 187])
+falling_spider = (47, sharedEnemy4)
+jumping_spider = (48, sharedEnemy1)
+zombie = (49, sharedEnemy1)
+fire_worm = (50, sharedEnemy2)
+spitting_plant = (51, bone_fish)
+seed = (52, [227])
+fist = (53, [240, 241, 242, 243])
+
+# Bosses
+big_sphinx = (60, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
+sphinx_fire = (61, [196, 197, 212, 213])
+big_fist_rock = (62, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
+
+base_tiles = [
+    base_scripts,
+    plane,
+    submarine,
+    mario_fireball,
+    coin,
+    mushroom,
+    flower,
+    star,
+    heart,
+    moving_blocks,
+    falling_block,
+    bouncing_boulder,
+    pushable_blocks,
+    question_block,
+    pipes,
+    spike,
+    lever,
+    goomba,
+    koopa,
+    shell,
+    explosion,
+    piranha_plant,
+    bill_launcher,
+    bill,
+]
+
+
+def _buildCompressedTileset(tiles) -> np.ndarray:
+    compressedTileset = np.zeros(TILES, dtype=np.uint8)
+
+    for t in tiles:
+        i, tileList = t
+        for tile in tileList:
+            compressedTileset[tile] = i
+
+    return compressedTileset
+
+
+worldTilesets = {
+    1: _buildCompressedTileset(
+        [
+            *base_tiles,
+            world_1_2_blocks,
+            moth,
+            flying_moth,
+            arrow,
+            sphinx,
+            big_sphinx,
+            sphinx_fire,
+        ]
+    ),
+    2: _buildCompressedTileset(
+        [
+            *base_tiles,
+            world_1_2_blocks,
+            bone_fish,
+            seahorse,
+            fireball,
+            robot,
+        ]
+    ),
+    3: _buildCompressedTileset(
+        [
+            *base_tiles,
+            world_3_4_blocks,
+            fist_rock,
+            flying_rock,
+            falling_spider,
+            jumping_spider,
+            big_fist_rock,
+        ]
+    ),
+    4: _buildCompressedTileset(
+        [
+            *base_tiles,
+            world_3_4_blocks,
+            zombie,
+            fire_worm,
+            fireball,
+            spitting_plant,
+            seed,
+        ]
+    ),
+}
+
+
 class MarioLandSettings(EnvSettings):
     def __init__(
         self,
@@ -117,6 +299,7 @@ class MarioLandSettings(EnvSettings):
         self.pyboy = pyboy
         self.gameWrapper = self.pyboy.game_wrapper()
         self.isEval = isEval
+        self.tileSet = None
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
@@ -174,6 +357,7 @@ class MarioLandSettings(EnvSettings):
         self.currentCheckpoint = self.stateCheckpoint
 
         self._setNextCheckpoint((world, level), self.stateCheckpoint)
+        self.tileSet = worldTilesets[world]
 
         # seed randomizer
         self.gameWrapper._set_timer_div(None)
@@ -280,7 +464,7 @@ class MarioLandSettings(EnvSettings):
         return reward, curState
 
     def observation(self, gameState: MarioLandGameState) -> Any:
-        obs = self.gameWrapper._game_area_np()
+        obs = self.gameWrapper._game_area_np(self.tileSet)
         # make 20x16 array a 1x320 array so it's Box compatible
         flatObs = np.concatenate(obs.tolist(), axis=None, dtype=np.int32)
         # add powerup status

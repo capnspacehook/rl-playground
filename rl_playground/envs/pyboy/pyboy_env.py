@@ -64,7 +64,7 @@ class PyBoyEnv(Env):
 
         # compabitility with Env
         self.metadata["render_modes"] = ["rgb_array"]
-        self.metadata["render_fps"] = 12
+        self.metadata["render_fps"] = 20
         self.render_mode = None
         if render:
             self.render_mode = "rgb_array"
