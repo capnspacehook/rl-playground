@@ -35,18 +35,18 @@ qrdqnConfig = {
 
 ppoConfig = {
     "policy": "MlpPolicy",
-    "batch_size": 64,
+    "batch_size": 512,
     "clip_range": 0.2,
-    "ent_coef": 7.513020308749457e-06,
-    "gae_lambda": 0.98,
-    "gamma": 0.98,
-    "learning_rate": 3.183807492928217e-05,
-    "max_grad_norm": 5,
-    "n_epochs": 5,
-    "n_steps": 512,
-    "vf_coef": 0.33653746631712467,
+    "ent_coef": 1.080365148093321e-05,
+    "gae_lambda": 0.8,
+    "gamma": 0.99,
+    "learning_rate": 6.160438419274751e-05,
+    "max_grad_norm": 0.9,
+    "n_epochs": 10,
+    "n_steps": 256,
+    "vf_coef": 0.21730023144009505,
     "policy_kwargs": dict(
-        activation_fn=nn.relu,
+        activation_fn=nn.tanh,
         net_arch=dict(pi=[256, 256], vf=[256, 256]),
     ),
 }
@@ -122,6 +122,8 @@ star = (13, [134])
 heart = (14, [132])
 
 # Blocks
+pipes = list(range(368, 381))
+world_4_extra_pipes = [363, 364, 365, 366]  # are normal blocks on other worlds
 common_blocks = (
     [
         142,
@@ -152,18 +154,21 @@ common_blocks = (
         381,
         382,
         383,
-    ],
+    ]
+    + pipes
+    + world_4_extra_pipes,
 )
 world_1_2_blocks = (20, [*common_blocks, 319])  # 319 is scenery on worlds 3 and 4
 world_3_4_blocks = (20, common_blocks)
-moving_blocks = (21, [230, 239])
-falling_block = (22, [238])
-bouncing_boulder = (23, [194, 195, 210, 211])
-pushable_blocks = (24, [128, 130, 354])  # 354 invisible on 2-2
-question_block = (25, [129])
-pipes = (26, list(range(368, 381)))
-spike = (27, [237])
-lever = (28, [255])  # Lever for level end
+moving_block = (21, [239])
+lift_block = (22, [230])
+falling_block = (23, [238])
+bouncing_boulder = (24, [194, 195, 210, 211])
+pushable_blocks = (25, [128, 130, 354])  # 354 invisible on 2-2
+question_block = (26, [129])
+# add pipes here if they should be separate
+spike = (28, [237])
+lever = (29, [255])  # Lever for level end
 
 # Enemies
 goomba = (30, [144])
@@ -172,52 +177,58 @@ shell = (32, [154, 155])
 explosion = (33, [157, 158])
 piranha_plant = (34, [146, 147, 148, 149])
 bill_launcher = (35, [135, 136])
-bill = (36, [249])
+bullet_bill = (36, [249])
+projectiles = (
+    37,
+    [
+        # fireball
+        226,
+        # spitting plant seed
+        227,
+    ],
+)
+flying_moth_arrow = (37, [172, 188])
 
 # Level specific enemies
 sharedEnemy1 = [160, 161, 162, 163, 176, 177, 178, 179]
-moth = (37, sharedEnemy1)
-flying_moth = (38, [192, 193, 194, 195, 208, 209, 210, 211])
-arrow = (39, [172, 188])
+moth = (38, sharedEnemy1)
+flying_moth = (39, [192, 193, 194, 195, 208, 209, 210, 211])
 sharedEnemy2 = [164, 165, 166, 167, 180, 181, 182, 183]
 sphinx = (40, sharedEnemy2)
 sharedEnemy3 = [192, 193, 208, 209]
 bone_fish = (41, sharedEnemy3)
 seahorse = (42, sharedEnemy2)
-fireball = (43, [226])
 sharedEnemy4 = [196, 197, 198, 199, 212, 213, 214, 215]
-robot = (44, sharedEnemy4)
-fist_rock = (45, sharedEnemy2)
-flying_rock = (46, [171, 187])
-falling_spider = (47, sharedEnemy4)
-jumping_spider = (48, sharedEnemy1)
-zombie = (49, sharedEnemy1)
-fire_worm = (50, sharedEnemy2)
-spitting_plant = (51, bone_fish)
-seed = (52, [227])
-fist = (53, [240, 241, 242, 243])
+robot = (43, sharedEnemy4)
+fist_rock = (44, sharedEnemy2)
+flying_rock = (45, [171, 187])
+falling_spider = (46, sharedEnemy4)
+jumping_spider = (47, sharedEnemy1)
+zombie = (48, sharedEnemy1)
+fire_worm = (49, sharedEnemy2)
+spitting_plant = (50, sharedEnemy3)
+fist = (51, [240, 241, 242, 243])
 
 # Bosses
 big_sphinx = (60, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
-sphinx_fire = (61, [196, 197, 212, 213])
+big_sphinx_fire = (61, [196, 197, 212, 213])
 big_fist_rock = (62, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 
 base_tiles = [
     base_scripts,
-    plane,
-    submarine,
+    # plane,
+    # submarine,
     mario_fireball,
-    coin,
+    # coin,
     mushroom,
     flower,
     star,
-    heart,
-    moving_blocks,
+    # heart,
+    moving_block,
+    lift_block,
     falling_block,
-    bouncing_boulder,
     pushable_blocks,
     question_block,
-    pipes,
     spike,
     lever,
     goomba,
@@ -226,7 +237,8 @@ base_tiles = [
     explosion,
     piranha_plant,
     bill_launcher,
-    bill,
+    bullet_bill,
+    projectiles,
 ]
 
 
@@ -248,10 +260,10 @@ worldTilesets = {
             world_1_2_blocks,
             moth,
             flying_moth,
-            arrow,
+            flying_moth_arrow,
             sphinx,
             big_sphinx,
-            sphinx_fire,
+            big_sphinx_fire,
         ]
     ),
     2: _buildCompressedTileset(
@@ -260,7 +272,6 @@ worldTilesets = {
             world_1_2_blocks,
             bone_fish,
             seahorse,
-            fireball,
             robot,
         ]
     ),
@@ -270,6 +281,7 @@ worldTilesets = {
             world_3_4_blocks,
             fist_rock,
             flying_rock,
+            bouncing_boulder,
             falling_spider,
             jumping_spider,
             big_fist_rock,
@@ -281,9 +293,7 @@ worldTilesets = {
             world_3_4_blocks,
             zombie,
             fire_worm,
-            fireball,
             spitting_plant,
-            seed,
         ]
     ),
 }
