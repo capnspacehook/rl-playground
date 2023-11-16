@@ -80,12 +80,20 @@ class MarioLandGameState(GameState):
         xPos = pyboy.get_memory_value(0xC202)
         scx = pyboy.botsupport_manager().screen().tilemap_position_list()[16][0]
         real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
+        self.xPos = levelBlock * 16 + real + xPos
 
-        self.realXPos = levelBlock * 16 + real + xPos
+        yPos = self.pyboy.get_memory_value(0xC201)
+        if yPos <= 182:
+            # 182 is lowest position, y coordinate is flipped, 0 is higher than 1
+            self.yPos = 182 - yPos
+        else:
+            # handle underflow
+            self.yPos = 182 + (256 - yPos)
+
         self.timeLeft = self.gameWrapper.time_left
         self.livesLeft = self.gameWrapper.lives_left
         self.score = self.gameWrapper.score
-        self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.realXPos)
+        self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
         self.world = self.gameWrapper.world
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
         self.deadJumpTimer = self.pyboy.get_memory_value(DEAD_JUMP_TIMER_MEM_VAL)
@@ -420,14 +428,14 @@ class MarioLandSettings(EnvSettings):
                 curState = self.gameState()
 
             # reset level progress max on new level
-            self.gameWrapper._level_progress_max = curState.realXPos
-            curState.levelProgressMax = curState.realXPos
+            self.gameWrapper._level_progress_max = curState.xPos
+            curState.levelProgressMax = curState.xPos
 
             return 50, curState
 
         # add time punishment every step to encourage speed more
         clock = -0.25
-        movement = curState.realXPos - prevState.realXPos
+        movement = curState.xPos - prevState.xPos
 
         # reward for passing checkpoints
         checkpoint = 0
@@ -478,7 +486,9 @@ class MarioLandSettings(EnvSettings):
         # make 20x16 array a 1x320 array so it's Box compatible
         flatObs = np.concatenate(obs.tolist(), axis=None, dtype=np.int32)
         # add powerup status
-        return np.append(flatObs, [gameState.powerupStatus])
+        return np.append(
+            flatObs, [gameState.powerupStatus, gameState.xPos, gameState.yPos]
+        )
 
     def terminated(
         self, prevState: MarioLandGameState, curState: MarioLandGameState
@@ -539,9 +549,10 @@ class MarioLandSettings(EnvSettings):
         # game area
         size = 20 * 16
         b = Box(low=0, high=TILES, shape=(size,), dtype=np.int32)
-        # add space for powerup status
-        low = np.append(b.low, [0])
-        high = np.append(b.high, [3])
+        # add space for powerup status, x and y pos
+        # dunno max x pos so just making it max int32
+        low = np.append(b.low, [0, 0, 0])
+        high = np.append(b.high, [3, 2_147_483_647, 255])
         return Box(low=low, high=high, dtype=np.int32)
 
     def normalizeObservation(self) -> bool:
@@ -562,14 +573,17 @@ class MarioLandSettings(EnvSettings):
     def gameState(self):
         return MarioLandGameState(self.pyboy)
 
-    def printGameState(self, state: MarioLandGameState):
-        print(f"Level progress: {state.realXPos}")
-        print(f"Max level progress: {state.levelProgressMax}")
-        print(f"Lives left: {state.livesLeft}")
-        print(f"Powerup: {state.powerupStatus}")
-        print(f"World: {state.world}")
-        print(f"Time left: {state.timeLeft}")
-        print(f"Time respawn: {state.statusTimer}")
+    def printGameState(
+        self, prevState: MarioLandGameState, curState: MarioLandGameState
+    ):
+        print(f"Max level progress: {curState.levelProgressMax}")
+        print(f"Powerup: {curState.powerupStatus}")
+        print(f"World: {curState.world}")
+        print(f"Time respawn: {curState.statusTimer}")
+        print(f"X, Y: {curState.xPos}, {curState.yPos}")
+        print(
+            f"X, Y speed: {self.pyboy.get_memory_value(0xC20C)}, {self.pyboy.get_memory_value(0xC208)}"
+        )
 
     def render(self):
         return self.pyboy.screen_image()

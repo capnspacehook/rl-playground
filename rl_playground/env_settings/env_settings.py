@@ -60,7 +60,7 @@ class EnvSettings:
         for awhile and training should stop"""
         return False
 
-    def printGameState(self, state: GameState) -> None:
+    def printGameState(self, prevState: GameState, curState: GameState) -> None:
         """Used to print in playtest mode"""
         raise Exception("PrintGameState not implemented!")
 
