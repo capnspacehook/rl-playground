@@ -1,0 +1,15 @@
+{
+    "batch_size": 64,
+    "clip_range": 0.2,
+    "ent_coef": 7.513020308749457e-06,
+    "gae_lambda": 0.98,
+    "gamma": 0.98,
+    "learning_rate": 3.183807492928217e-05,
+    "lr_schedule": "constant",
+    "max_grad_norm": 5,
+    "n_epochs": 5,
+    "n_steps": 512,
+    "activation_fn": "relu",
+    "net_arch": "medium",
+    "vf_coef": 0.33653746631712467,
+}

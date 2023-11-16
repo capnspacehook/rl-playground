@@ -12,13 +12,13 @@ from pathlib import Path
 
 import numpy as np
 import optuna
-import torch.nn as nn
+import flax.linen as nn
 from optuna.pruners import BasePruner, MedianPruner
 from optuna.samplers import TPESampler
 from optuna.trial import TrialState
 
 # from sb3_contrib import QRDQN
-from stable_baselines3 import PPO, HerReplayBuffer
+from sbx import PPO
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
@@ -41,68 +41,68 @@ DEFAULT_PPO_HYPERPARAMS = {
 }
 
 
-def sample_qrdqn_params(trial: optuna.Trial) -> Dict[str, Any]:
-    batch_size = trial.suggest_categorical(
-        "batch_size", [16, 32, 64, 100, 128, 256, 512]
-    )
-    buffer_size = trial.suggest_categorical(
-        "buffer_size", [int(1e4), int(5e4), int(1e5), int(1e6)]
-    )
-    exploration_final_eps = trial.suggest_float("exploration_final_eps", 0, 0.2)
-    exploration_fraction = trial.suggest_float("exploration_fraction", 0, 0.5)
-    gamma = trial.suggest_categorical(
-        "gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999]
-    )
-    learning_rate = trial.suggest_float("learning_rate", 5e-6, 1, log=True)
-    learning_starts = trial.suggest_categorical(
-        "learning_starts", [0, 1000, 5000, 10000, 20000]
-    )
-    target_update_interval = trial.suggest_categorical(
-        "target_update_interval", [100, 1000, 5000, 10000, 15000, 20000]
-    )
-    train_freq = trial.suggest_categorical("train_freq", [1, 4, 8, 16, 128, 256, 1000])
-    # make higher values more likely
-    tau = 1 - trial.suggest_float("tau", low=0, high=1, log=True)
+# def sample_qrdqn_params(trial: optuna.Trial) -> Dict[str, Any]:
+#     batch_size = trial.suggest_categorical(
+#         "batch_size", [16, 32, 64, 100, 128, 256, 512]
+#     )
+#     buffer_size = trial.suggest_categorical(
+#         "buffer_size", [int(1e4), int(5e4), int(1e5), int(1e6)]
+#     )
+#     exploration_final_eps = trial.suggest_float("exploration_final_eps", 0, 0.2)
+#     exploration_fraction = trial.suggest_float("exploration_fraction", 0, 0.5)
+#     gamma = trial.suggest_categorical(
+#         "gamma", [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999]
+#     )
+#     learning_rate = trial.suggest_float("learning_rate", 5e-6, 1, log=True)
+#     learning_starts = trial.suggest_categorical(
+#         "learning_starts", [0, 1000, 5000, 10000, 20000]
+#     )
+#     target_update_interval = trial.suggest_categorical(
+#         "target_update_interval", [100, 1000, 5000, 10000, 15000, 20000]
+#     )
+#     train_freq = trial.suggest_categorical("train_freq", [1, 4, 8, 16, 128, 256, 1000])
+#     # make higher values more likely
+#     tau = 1 - trial.suggest_float("tau", low=0, high=1, log=True)
 
-    # net_arch = trial.suggest_categorical("net_arch", ["tiny", "small", "medium"])
-    # net_arch = {"tiny": [64], "small": [64, 64], "medium": [256, 256]}[net_arch]
-    n_quantiles = trial.suggest_int("n_quantiles", 5, 200)
+#     # net_arch = trial.suggest_categorical("net_arch", ["tiny", "small", "medium"])
+#     # net_arch = {"tiny": [64], "small": [64, 64], "medium": [256, 256]}[net_arch]
+#     n_quantiles = trial.suggest_int("n_quantiles", 5, 200)
 
-    hyperparams = {
-        "batch_size": batch_size,
-        "buffer_size": buffer_size,
-        "exploration_final_eps": exploration_final_eps,
-        "exploration_fraction": exploration_fraction,
-        "gamma": gamma,
-        "learning_rate": learning_rate,
-        "learning_starts": learning_starts,
-        "target_update_interval": target_update_interval,
-        "train_freq": train_freq,
-        "tau": tau,
-        "policy_kwargs": dict(
-            # net_arch=net_arch,
-            n_quantiles=n_quantiles,
-        ),
-    }
+#     hyperparams = {
+#         "batch_size": batch_size,
+#         "buffer_size": buffer_size,
+#         "exploration_final_eps": exploration_final_eps,
+#         "exploration_fraction": exploration_fraction,
+#         "gamma": gamma,
+#         "learning_rate": learning_rate,
+#         "learning_starts": learning_starts,
+#         "target_update_interval": target_update_interval,
+#         "train_freq": train_freq,
+#         "tau": tau,
+#         "policy_kwargs": dict(
+#             # net_arch=net_arch,
+#             n_quantiles=n_quantiles,
+#         ),
+#     }
 
-    # use_her = trial.suggest_categorical("use_her_replay_buffer", [False, True])
-    # if use_her:
-    #     hyperparams = sample_her_params(trial, hyperparams)
+#     # use_her = trial.suggest_categorical("use_her_replay_buffer", [False, True])
+#     # if use_her:
+#     #     hyperparams = sample_her_params(trial, hyperparams)
 
-    return hyperparams
+#     return hyperparams
 
 
-def sample_her_params(
-    trial: optuna.Trial, hyperparams: Dict[str, Any]
-) -> Dict[str, Any]:
-    her_kwargs = {}
-    her_kwargs["n_sampled_goal"] = trial.suggest_int("n_sampled_goal", 1, 5)
-    her_kwargs["goal_selection_strategy"] = trial.suggest_categorical(
-        "goal_selection_strategy", ["final", "episode", "future"]
-    )
-    hyperparams["replay_buffer_class"] = HerReplayBuffer
-    hyperparams["replay_buffer_kwargs"] = her_kwargs
-    return hyperparams
+# def sample_her_params(
+#     trial: optuna.Trial, hyperparams: Dict[str, Any]
+# ) -> Dict[str, Any]:
+#     her_kwargs = {}
+#     her_kwargs["n_sampled_goal"] = trial.suggest_int("n_sampled_goal", 1, 5)
+#     her_kwargs["goal_selection_strategy"] = trial.suggest_categorical(
+#         "goal_selection_strategy", ["final", "episode", "future"]
+#     )
+#     hyperparams["replay_buffer_class"] = HerReplayBuffer
+#     hyperparams["replay_buffer_kwargs"] = her_kwargs
+#     return hyperparams
 
 
 def sample_ppo_params(trial: optuna.Trial, numTrainingEnvs: int) -> Dict[str, Any]:
@@ -125,16 +125,14 @@ def sample_ppo_params(trial: optuna.Trial, numTrainingEnvs: int) -> Dict[str, An
         learning_rate = linear_schedule(learning_rate)
 
     n_epochs = trial.suggest_categorical("n_epochs", [1, 5, 10, 20])
-    n_steps = trial.suggest_categorical(
-        "n_steps", [8, 16, 32, 64, 128, 256, 512, 1024, 2048]
-    )
+    n_steps = trial.suggest_categorical("n_steps", [64, 128, 256, 512, 1024, 2048])
 
     activation_fn = trial.suggest_categorical("activation_fn", ["tanh", "relu"])
     activation_fn = {
-        "tanh": nn.Tanh,
-        "relu": nn.ReLU,
-        "elu": nn.ELU,
-        "leaky_relu": nn.LeakyReLU,
+        "tanh": nn.tanh,
+        "relu": nn.relu,
+        "elu": nn.elu,
+        "leaky_relu": nn.leaky_relu,
     }[activation_fn]
 
     net_arch = trial.suggest_categorical(
@@ -367,6 +365,12 @@ if __name__ == "__main__":
         default="./trials",
         help="directory that contains trials to start the study with",
     )
+    parser.add_argument("--resume", action="store_true", help="resume a canceled study")
+    parser.add_argument(
+        "--no-last-trial-restart",
+        action="store_false",
+        help="when resuming if the last trial failed, don't attempt it again",
+    )
     args = parser.parse_args()
 
     study = optuna.create_study(
@@ -375,7 +379,9 @@ if __name__ == "__main__":
         direction="maximize",
         load_if_exists=True,
     )
-    newStudy = len(study.get_trials(deepcopy=False)) == 0
+
+    trials = study.get_trials(deepcopy=False)
+    newStudy = len(trials) == 0
 
     startupTrials = args.startup_trials
     enqueuedTrials = 0
@@ -395,6 +401,23 @@ if __name__ == "__main__":
         # Don't count enqueued trials as random startup trials
         enqueuedTrials = len(trialFiles)
         startupTrials += enqueuedTrials
+
+    nTrials = args.trials
+    if args.resume:
+        nTrials -= len(trials)
+        startupTrials -= len(trials)
+
+        # restart last trial if it failed
+        if not args.no_last_trial_restart:
+            lastTrial = trials[-1]
+            if lastTrial.state == TrialState.FAIL:
+                nTrials += 1
+                startupTrials += 1
+
+                study.enqueue_trial(lastTrial.params)
+
+        if startupTrials < 0:
+            startupTrials = 0
 
     study.sampler = TPESampler(n_startup_trials=startupTrials, multivariate=True)
     # Do not prune before 1/2 of the max budget is used.
