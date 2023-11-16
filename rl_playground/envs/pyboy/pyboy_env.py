@@ -101,11 +101,12 @@ class PyBoyEnv(Env):
         actions = self.actions[action_idx]
         if not self.isPlaytest:
             self.sendInputs(actions)
-        else:
-            self.envSettings.printGameState(self.prevGameState)
-        pyboyDone = self.pyboy.tick()
 
+        pyboyDone = self.pyboy.tick()
         reward, curGameState = self.envSettings.reward(self.prevGameState)
+
+        if self.isPlaytest:
+            self.envSettings.printGameState(self.prevGameState, curGameState)
 
         info = self.envSettings.info(self.prevGameState)
         if info is not None:
