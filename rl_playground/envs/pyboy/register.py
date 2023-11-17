@@ -11,8 +11,6 @@ from rl_playground.env_settings.super_mario_land import MarioLandSettings
 from rl_playground.envs.pyboy.pyboy_env import PyBoyEnv
 from rl_playground.envs.pyboy.wrappers import SkipFrame
 
-frameStack = 4
-
 
 def createPyboyEnv(
     rom: Path,
@@ -55,9 +53,10 @@ def createPyboyEnv(
         outputDir=outputDir,
     )
 
-    env = SkipFrame(env, skip=frameStack)
-    env = FrameStack(env, num_stack=frameStack)
     env = Monitor(env)
+    env = SkipFrame(env, skip=4)
+    env = FrameStack(env, num_stack=4)
+
     # check_env(env)
 
     return envSettings, env

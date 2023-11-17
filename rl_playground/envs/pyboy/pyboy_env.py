@@ -72,7 +72,7 @@ class PyBoyEnv(Env):
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
 
-        self.envSettings.reset(options=options)
+        self.prevGameState = self.envSettings.reset(options=options)
 
         if not self._started:
             self._started = True
@@ -89,8 +89,6 @@ class PyBoyEnv(Env):
             self.episodeNum += 1
 
         self.button_is_pressed = {button: False for button in self._buttons}
-
-        self.prevGameState = self.envSettings.gameState()
 
         return self.envSettings.observation(self.prevGameState), {}
 

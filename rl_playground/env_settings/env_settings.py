@@ -25,7 +25,7 @@ class EnvSettings:
         """Number of evaluation episodes that should be preformed"""
         return 1
 
-    def reset(self, options: dict[str, Any] | None = None):
+    def reset(self, options: dict[str, Any] | None = None) -> GameState:
         """Reset state when starting a new training run"""
         pass
 
