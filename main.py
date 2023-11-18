@@ -10,7 +10,7 @@ import numpy as np
 import pandas
 
 # from sb3_contrib import QRDQN
-from stable_baselines3 import PPO
+from sbx import PPO
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from wandb.integration.sb3 import WandbCallback

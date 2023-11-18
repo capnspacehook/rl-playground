@@ -408,7 +408,7 @@ class MarioLandSettings(EnvSettings):
         # stochastic
         curState = self.gameState()
         if not self.isEval:
-            if random.randint(0, 100) <= RANDOM_POWERUP_CHANCE:
+            if random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
                 # 0: small with star
                 # 1: big
                 # 2: big with star
@@ -491,12 +491,9 @@ class MarioLandSettings(EnvSettings):
             else:
                 self.evalNoProgress = 0
 
-        reward = (
-            clock
-            + movement
-            + checkpoint
-            + self._handlePowerup(prevState, curState, False)
-        )
+        powerup = self._handlePowerup(prevState, curState, False)
+
+        reward = clock + movement + checkpoint + powerup
 
         return reward, curState
 

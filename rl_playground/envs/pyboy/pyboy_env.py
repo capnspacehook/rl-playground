@@ -1,4 +1,5 @@
 from pathlib import Path
+import random
 from typing import Any
 
 import pandas
@@ -68,6 +69,8 @@ class PyBoyEnv(Env):
         self.render_mode = None
         if render:
             self.render_mode = "rgb_array"
+
+        random.seed()
 
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
