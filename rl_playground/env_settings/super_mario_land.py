@@ -35,16 +35,16 @@ qrdqnConfig = {
 
 ppoConfig = {
     "policy": "MlpPolicy",
-    "batch_size": 512,
+    "batch_size": 64,
     "clip_range": 0.2,
-    "ent_coef": 1.080365148093321e-05,
-    "gae_lambda": 0.8,
+    "ent_coef": 7.513020308749457e-06,
+    "gae_lambda": 0.98,
     "gamma": 0.99,
-    "learning_rate": 6.160438419274751e-05,
-    "max_grad_norm": 0.9,
-    "n_epochs": 10,
-    "n_steps": 256,
-    "vf_coef": 0.21730023144009505,
+    "learning_rate": 3.183807492928217e-05,
+    "max_grad_norm": 5,
+    "n_epochs": 5,
+    "n_steps": 512,
+    "vf_coef": 0.33653746631712467,
     "policy_kwargs": dict(
         activation_fn=nn.tanh,
         net_arch=dict(pi=[256, 256], vf=[256, 256]),
@@ -52,21 +52,26 @@ ppoConfig = {
 }
 
 RANDOM_NOOP_FRAMES = 60
+RANDOM_POWERUP_CHANCE = 25
+
+GAME_AREA_HEIGHT = 16
+GAME_AREA_WIDTH = 20
 
 STATUS_TIMER_MEM_VAL = 0xFFA6
 DEAD_JUMP_TIMER_MEM_VAL = 0xC0AC
 POWERUP_STATUS_MEM_VAL = 0xFF99
 HAS_FIRE_FLOWER_MEM_VAL = 0xFFB5
 STAR_TIMER_MEM_VAL = 0xC0D3
+FRAME_COUNTER_MEM_VAL = 0xDA00
 
 STATUS_SMALL = 0
 STATUS_BIG = 1
 STATUS_FIRE = 2
-STATUS_STAR = 3
-STATUS_INVINCIBLE = 4
 
 TIMER_DEATH = 0x90
 TIMER_LEVEL_CLEAR = 0xF0
+STAR_TIME = 956
+SHRINK_TIME = 0x50 + 0x40
 
 
 class MarioLandGameState(GameState):
@@ -83,12 +88,12 @@ class MarioLandGameState(GameState):
         self.xPos = levelBlock * 16 + real + xPos
 
         yPos = self.pyboy.get_memory_value(0xC201)
-        if yPos <= 182:
-            # 182 is lowest position, y coordinate is flipped, 0 is higher than 1
-            self.yPos = 182 - yPos
+        if yPos <= 183:
+            # 183 is lowest position, y coordinate is flipped, 0 is higher than 1
+            self.yPos = 183 - yPos
         else:
             # handle underflow
-            self.yPos = 182 + (256 - yPos)
+            self.yPos = 183 + (256 - yPos)
 
         self.timeLeft = self.gameWrapper.time_left
         self.livesLeft = self.gameWrapper.lives_left
@@ -101,10 +106,14 @@ class MarioLandGameState(GameState):
         powerupStatus = self.pyboy.get_memory_value(POWERUP_STATUS_MEM_VAL)
         hasFireFlower = self.pyboy.get_memory_value(HAS_FIRE_FLOWER_MEM_VAL)
         starTimer = self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)
+
+        self.powerupStatus = STATUS_SMALL
+        self.gotStar = False
+        self.isInvincible = False
+        self.invincibleTimer = 0
         if starTimer != 0:
-            self.powerupStatus = STATUS_STAR
-        elif powerupStatus == 0 or powerupStatus == 3:
-            self.powerupStatus = STATUS_SMALL
+            self.gotStar = True
+            self.isInvincible = True
         elif powerupStatus == 1:
             self.powerupStatus = STATUS_BIG
         elif powerupStatus == 2:
@@ -112,8 +121,10 @@ class MarioLandGameState(GameState):
                 self.powerupStatus = STATUS_FIRE
             else:
                 self.powerupStatus = STATUS_BIG
-        elif powerupStatus == 4:
-            self.powerupStatus = STATUS_INVINCIBLE
+        if powerupStatus == 3 or powerupStatus == 4:
+            self.isInvincible = True
+
+        self.hasStar = self.gotStar
 
 
 # Mario and Daisy
@@ -316,15 +327,17 @@ class MarioLandSettings(EnvSettings):
     ):
         self.pyboy = pyboy
         self.gameWrapper = self.pyboy.game_wrapper()
+
         self.isEval = isEval
         self.tileSet = None
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
+        self.invincibilityTimer = 0
+
         self.stateFiles = sorted(
             [join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))]
         )
-
         self.stateCheckpoint = 0
         self.currentCheckpoint = 0
         self.nextCheckpoint = 0
@@ -342,12 +355,12 @@ class MarioLandSettings(EnvSettings):
         # so level progress max will be set
         self.gameWrapper.start_game()
 
-    def reset(self, options: dict[str, Any] | None = None):
+    def reset(self, options: dict[str, Any] | None = None) -> MarioLandGameState:
         # this will be passed before evals are started, reset the eval
         # state counter so all evals will start at the same state
         if options is not None and options["_eval_starting"]:
             self.evalStateCounter = 0
-            return
+            return self.gameState()
 
         if self.isEval:
             # evaluate levels in order
@@ -360,9 +373,9 @@ class MarioLandSettings(EnvSettings):
             # reset game state to a random level
             self.stateIdx = random.randint(0, len(self.stateFiles) - 1)
 
-        self._loadLevel()
+        return self._loadLevel()
 
-    def _loadLevel(self):
+    def _loadLevel(self) -> MarioLandGameState:
         stateFile = self.stateFiles[self.stateIdx]
         with open(stateFile, "rb") as f:
             self.pyboy.load_state(f)
@@ -390,6 +403,29 @@ class MarioLandSettings(EnvSettings):
             for _ in range(random.randint(0, RANDOM_NOOP_FRAMES)):
                 self.pyboy.tick()
 
+        # occasionally randomly set mario's powerup status so the NN
+        # can learn to use the powerups; also makes the environment more
+        # stochastic
+        curState = self.gameState()
+        if not self.isEval:
+            if random.randint(0, 100) <= RANDOM_POWERUP_CHANCE:
+                # 0: small with star
+                # 1: big
+                # 2: big with star
+                # 3: fire flower
+                # 4: fire flower with star
+                randPowerup = random.randint(0, 4)
+                if randPowerup in (0, 2, 4):
+                    self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 248)
+                if randPowerup != STATUS_SMALL:
+                    self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, STATUS_BIG)
+                    if randPowerup > 2:
+                        self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
+
+                prevState = curState
+                curState = self.gameState()
+                self._handlePowerup(prevState, curState, True)
+
         # level checkpoints get less time
         timerHundreds = 4 - self.stateCheckpoint
 
@@ -397,6 +433,8 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(0x9831, timerHundreds)
         self.pyboy.set_memory_value(0x9832, 0)
         self.pyboy.set_memory_value(0x9833, 0)
+
+        return curState
 
     def _setNextCheckpoint(self, world, currentCheckpoint):
         self.nextCheckpoint = 0
@@ -423,9 +461,8 @@ class MarioLandSettings(EnvSettings):
                 self.stateIdx += (2 - self.stateCheckpoint) + 1
                 if self.stateIdx >= len(self.stateFiles):
                     self.stateIdx = 0
-                self._loadLevel()
 
-                curState = self.gameState()
+                curState = self._loadLevel()
 
             # reset level progress max on new level
             self.gameWrapper._level_progress_max = curState.xPos
@@ -454,41 +491,115 @@ class MarioLandSettings(EnvSettings):
             else:
                 self.evalNoProgress = 0
 
-        powerup = 0
-        # if mario is briefly invincible after getting hit set his status
-        # to what it was before
-        if (
-            curState.powerupStatus != prevState.powerupStatus
-            and curState.powerupStatus == STATUS_INVINCIBLE
-        ):
-            curState.powerupStatus = prevState.powerupStatus
-
-        # don't punish or reward the star invincibility running out
-        if (
-            curState.powerupStatus != prevState.powerupStatus
-            and prevState.powerupStatus != STATUS_STAR
-        ):
-            if curState.powerupStatus == STATUS_SMALL:
-                powerup = -10
-            elif curState.powerupStatus == STATUS_BIG:
-                powerup = 10
-            elif curState.powerupStatus == STATUS_FIRE:
-                powerup = 20
-            elif curState.powerupStatus == STATUS_STAR:
-                powerup = 30
-
-        reward = clock + movement + checkpoint + powerup
+        reward = (
+            clock
+            + movement
+            + checkpoint
+            + self._handlePowerup(prevState, curState, False)
+        )
 
         return reward, curState
 
+    def _handlePowerup(
+        self,
+        prevState: MarioLandGameState,
+        curState: MarioLandGameState,
+        manuallySet: bool,
+    ) -> int:
+        # only reward getting star once
+        powerup = 0
+        if (prevState.gotStar or prevState.hasStar) and curState.gotStar:
+            curState.gotStar = False
+        if curState.gotStar:
+            self.invincibilityTimer = STAR_TIME
+            if manuallySet:
+                # when a star is given to mario via manipulating RAM
+                # the invinciblility lasts a bit longer
+                self.invincibilityTimer += 36
+            # The actual star timer is set to 248 and only ticks down
+            # when the frame counter is a one greater than a number
+            # divisible by four. Don't ask me why. This accounts for
+            # extra invincibility frames depending on what the frame
+            # counter was at when the star was picked up
+            frames = self.pyboy.get_memory_value(FRAME_COUNTER_MEM_VAL)
+            extra = (frames - 1) % 4
+            self.invincibilityTimer += extra
+            powerup += 40
+        if curState.hasStar:
+            # current powerup status will be set to star, so set it to
+            # the powerup of the last frame so the base powerup is accurate
+            curState.powerupStatus = prevState.powerupStatus
+
+        # big reward for acquiring powerups, small punishment for
+        # loosing them but not too big a punishment so abusing
+        # invincibility frames isn't discouraged
+        if curState.powerupStatus != prevState.powerupStatus:
+            if prevState.powerupStatus == STATUS_SMALL:
+                # mario got a mushroom
+                powerup = 25
+            elif prevState.powerupStatus == STATUS_BIG:
+                if curState.powerupStatus == STATUS_FIRE:
+                    powerup = 20
+                elif curState.powerupStatus == STATUS_SMALL:
+                    self.invincibilityTimer = SHRINK_TIME
+                    powerup = -10
+            elif prevState.powerupStatus == STATUS_FIRE:
+                # mario got hit and lost the fire flower
+                self.invincibilityTimer = SHRINK_TIME
+                powerup = -10
+
+        if self.invincibilityTimer != 0:
+            curState.invincibleTimer = self.invincibilityTimer
+            self.invincibilityTimer -= 1
+
+        return powerup
+
     def observation(self, gameState: MarioLandGameState) -> Any:
         obs = self.gameWrapper._game_area_np(self.tileSet)
-        # make 20x16 array a 1x320 array so it's Box compatible
+
+        # if mario is invincible his sprites will periodically flash by
+        # cycling between being visible and not visible, ensure they are
+        # always visible in the game area
+        if gameState.isInvincible:
+            self._drawMario(obs)
+
+        # flatten the game area array so it's Box compatible
         flatObs = np.concatenate(obs.tolist(), axis=None, dtype=np.int32)
-        # add powerup status
+
+        # add other features
         return np.append(
-            flatObs, [gameState.powerupStatus, gameState.xPos, gameState.yPos]
+            flatObs,
+            [
+                gameState.powerupStatus,
+                gameState.hasStar,
+                gameState.invincibleTimer,
+                gameState.xPos,
+                gameState.yPos,
+            ],
         )
+
+    def _drawMario(self, obs):
+        # convert relative to screen y pos to sprite pos
+        relYPos = self.pyboy.get_memory_value(0xC201) - 22
+        marioLeftHead = self.pyboy.botsupport_manager().sprite(3)
+        x1 = marioLeftHead.x // 8
+        x2 = x1 + 1
+        if marioLeftHead.attr_x_flip:
+            x2 = x1 - 1
+
+        y1 = (marioLeftHead.y // 8) - 1
+        if y1 >= GAME_AREA_HEIGHT:
+            # sprite is not visible so y pos is off screen, set it to
+            # correct pos where mario is
+            y1 = (relYPos // 8) - 1
+        y2 = y1 - 1
+
+        if y1 >= 0 and y1 < GAME_AREA_HEIGHT:
+            obs[y1][x1] = 1
+            obs[y1][x2] = 1
+        if y2 >= 0 and y2 < GAME_AREA_HEIGHT:
+            obs[y2][x1] = 1
+            obs[y2][x2] = 1
 
     def terminated(
         self, prevState: MarioLandGameState, curState: MarioLandGameState
@@ -547,12 +658,13 @@ class MarioLandSettings(EnvSettings):
 
     def observationSpace(self) -> Space:
         # game area
-        size = 20 * 16
-        b = Box(low=0, high=TILES, shape=(size,), dtype=np.int32)
-        # add space for powerup status, x and y pos
-        # dunno max x pos so just making it max int32
-        low = np.append(b.low, [0, 0, 0])
-        high = np.append(b.high, [3, 2_147_483_647, 255])
+        size = GAME_AREA_HEIGHT * GAME_AREA_WIDTH
+        b = Box(low=0, high=TILES, shape=(size,))
+        # TODO: make invincible an accurate timer with frameskips
+        # add space for powerup status, is invincible, star timer, x and y pos
+        # dunno max x pos so just making it max uint16
+        low = np.append(b.low, [0, 0, 0, 0, 0])
+        high = np.append(b.high, [3, 1, 1000, 65_535, 255])
         return Box(low=low, high=high, dtype=np.int32)
 
     def normalizeObservation(self) -> bool:
@@ -576,14 +688,14 @@ class MarioLandSettings(EnvSettings):
     def printGameState(
         self, prevState: MarioLandGameState, curState: MarioLandGameState
     ):
-        print(f"Max level progress: {curState.levelProgressMax}")
-        print(f"Powerup: {curState.powerupStatus}")
-        print(f"World: {curState.world}")
-        print(f"Time respawn: {curState.statusTimer}")
-        print(f"X, Y: {curState.xPos}, {curState.yPos}")
-        print(
-            f"X, Y speed: {self.pyboy.get_memory_value(0xC20C)}, {self.pyboy.get_memory_value(0xC208)}"
-        )
+        s = f"""
+Max level progress: {curState.levelProgressMax}
+Powerup: {curState.powerupStatus}
+Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
+X, Y: {curState.xPos}, {curState.yPos}
+Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
+"""
+        print(s[1:], flush=True)
 
     def render(self):
         return self.pyboy.screen_image()
