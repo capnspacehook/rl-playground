@@ -191,7 +191,7 @@ lever = (29, [255])  # Lever for level end
 
 # Enemies
 goomba = (30, [144])
-koopa = (31, [150, 151, 152, 153])
+koopa = (30, [150, 151, 152, 153])
 shell = (32, [154, 155])
 explosion = (33, [157, 158])
 piranha_plant = (34, [146, 147, 148, 149])
@@ -210,27 +210,27 @@ flying_moth_arrow = (37, [172, 188])
 
 # Level specific enemies
 sharedEnemy1 = [160, 161, 162, 163, 176, 177, 178, 179]
-moth = (38, sharedEnemy1)
-flying_moth = (39, [192, 193, 194, 195, 208, 209, 210, 211])
+moth = (30, sharedEnemy1)
+flying_moth = (30, [192, 193, 194, 195, 208, 209, 210, 211])
 sharedEnemy2 = [164, 165, 166, 167, 180, 181, 182, 183]
-sphinx = (40, sharedEnemy2)
+sphinx = (30, sharedEnemy2)
 sharedEnemy3 = [192, 193, 208, 209]
-bone_fish = (41, sharedEnemy3)
-seahorse = (42, sharedEnemy2)
+bone_fish = (30, sharedEnemy3)
+seahorse = (30, sharedEnemy2)
 sharedEnemy4 = [196, 197, 198, 199, 212, 213, 214, 215]
-robot = (43, sharedEnemy4)
-fist_rock = (44, sharedEnemy2)
-flying_rock = (45, [171, 187])
-falling_spider = (46, sharedEnemy4)
-jumping_spider = (47, sharedEnemy1)
-zombie = (48, sharedEnemy1)
-fire_worm = (49, sharedEnemy2)
-spitting_plant = (50, sharedEnemy3)
+robot = (30, sharedEnemy4)
+fist_rock = (30, sharedEnemy2)
+flying_rock = (30, [171, 187])
+falling_spider = (30, sharedEnemy4)
+jumping_spider = (30, sharedEnemy1)
+zombie = (30, sharedEnemy1)
+fire_worm = (30, sharedEnemy2)
+spitting_plant = (30, sharedEnemy3)
 fist = (51, [240, 241, 242, 243])
 
 # Bosses
 big_sphinx = (60, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
-big_sphinx_fire = (61, [196, 197, 212, 213])
+big_sphinx_fire = (37, [196, 197, 212, 213])
 big_fist_rock = (62, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 
 base_tiles = [
