@@ -3,11 +3,14 @@
 import argparse
 import datetime
 import copy
+import itertools
 import os
 from pathlib import Path
+import random
 
 import numpy as np
 import pandas
+from pyboy import PyBoy, WindowEvent
 
 # from sb3_contrib import QRDQN
 from sbx import PPO
@@ -221,34 +224,96 @@ def replay(args):
 def playtest(args):
     print("Playtest mode")
 
-    _, env = createPyboyEnv(
-        args.rom, args.render, args.emulation_speed, isPlaytest=True
-    )
-    env = DummyVecEnv([lambda: env])
-    model = args.algo("MlpPolicy", env)
-    obs = env.reset()
+    pyboy = PyBoy("games/super_mario_land.gb", window_type="SDL2")
 
-    rewards = []
-    recentRewards = []
-    done = False
+    baseActions = [
+        WindowEvent.PASS,
+        WindowEvent.PRESS_BUTTON_A,
+        WindowEvent.PRESS_BUTTON_B,
+        WindowEvent.PRESS_ARROW_LEFT,
+        WindowEvent.PRESS_ARROW_RIGHT,
+    ]
 
-    try:
-        while not done:
-            action, _ = model.predict(obs)
-            obs, reward, done, _ = env.step(action)
-            if reward != 0:
-                rewards.append(reward)
-                if len(recentRewards) == 3:
-                    recentRewards.pop()
-                recentRewards.insert(0, reward)
+    totalActionsWithRepeats = list(itertools.permutations(baseActions, 2))
+    withoutRepeats = []
 
-            print(f"Recent rewards: {recentRewards}")
-    except KeyboardInterrupt:
-        pass
+    for combination in totalActionsWithRepeats:
+        # remove useless action combinations
+        if (
+            isinstance(combination, tuple)
+            and WindowEvent.PASS in combination
+            or combination
+            == (
+                WindowEvent.PRESS_ARROW_LEFT,
+                WindowEvent.PRESS_ARROW_RIGHT,
+            )
+            or combination
+            == (
+                WindowEvent.PRESS_ARROW_RIGHT,
+                WindowEvent.PRESS_ARROW_LEFT,
+            )
+        ):
+            continue
+        reversedCombination = combination[::-1]
+        if reversedCombination not in withoutRepeats:
+            withoutRepeats.append(combination)
 
-    print(reward)
-    print(f"Reward sum: {sum(rewards)}")
-    env.close()
+    filteredActions = [[action] for action in baseActions] + withoutRepeats
+
+    _buttons = [
+        WindowEvent.PRESS_ARROW_UP,
+        WindowEvent.PRESS_ARROW_DOWN,
+        WindowEvent.PRESS_ARROW_RIGHT,
+        WindowEvent.PRESS_ARROW_LEFT,
+        WindowEvent.PRESS_BUTTON_A,
+        WindowEvent.PRESS_BUTTON_B,
+        WindowEvent.PRESS_BUTTON_SELECT,
+        WindowEvent.PRESS_BUTTON_START,
+    ]
+    _button_is_pressed = {button: False for button in _buttons}
+
+    _buttons_release = [
+        WindowEvent.RELEASE_ARROW_UP,
+        WindowEvent.RELEASE_ARROW_DOWN,
+        WindowEvent.RELEASE_ARROW_RIGHT,
+        WindowEvent.RELEASE_ARROW_LEFT,
+        WindowEvent.RELEASE_BUTTON_A,
+        WindowEvent.RELEASE_BUTTON_B,
+        WindowEvent.RELEASE_BUTTON_SELECT,
+        WindowEvent.RELEASE_BUTTON_START,
+    ]
+    _release_button = {
+        button: r_button for button, r_button in zip(_buttons, _buttons_release)
+    }
+
+    while True:
+        with open("games/low-timer-star.state", "rb") as f:
+            pyboy.load_state(f)
+        with open("actions.txt", "r") as f:
+            while True:
+                idx = f.readline()[:-1]
+                actions = filteredActions[int(idx)]
+
+                # release buttons that were pressed in the past
+                for pressedFromBefore in [
+                    pressed
+                    for pressed in _button_is_pressed
+                    if _button_is_pressed[pressed] == True
+                ]:  # get all buttons currently pressed
+                    if pressedFromBefore not in actions:
+                        release = _release_button[pressedFromBefore]
+                        pyboy.send_input(release)
+                        _button_is_pressed[release] = False
+
+                # press buttons we want to press
+                for buttonToPress in actions:
+                    if buttonToPress == WindowEvent.PASS:
+                        continue
+                    pyboy.send_input(buttonToPress)
+                    # update status of the button
+                    _button_is_pressed[buttonToPress] = True
+
+                pyboy.tick()
 
 
 if __name__ == "__main__":
@@ -361,19 +426,20 @@ if __name__ == "__main__":
         parser.print_help()
         exit(1)
 
-    args.algorithm = args.algorithm.lower()
-    match args.algorithm:
-        case "ppo":
-            args.algo = PPO
+    if args.train or args.evaluate:
+        args.algorithm = args.algorithm.lower()
+        match args.algorithm:
+            case "ppo":
+                args.algo = PPO
 
-            if args.save_replay_buffers:
-                print("PPO doesn't have a replay buffer")
+                if args.save_replay_buffers:
+                    print("PPO doesn't have a replay buffer")
+                    exit(1)
+            case "qrdqn":
+                args.algo = QRDQN
+            case _:
+                print(f"invalid algorithm {args.algorithm}")
                 exit(1)
-        case "qrdqn":
-            args.algo = QRDQN
-        case _:
-            print(f"invalid algorithm {args.algorithm}")
-            exit(1)
 
     if args.evaluate or args.replay or args.playtest:
         args.render = True
