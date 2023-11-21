@@ -39,7 +39,7 @@ def train(args):
     saveDir = Path("checkpoints", "train", gameName, runName)
     saveDir.mkdir(parents=True)
 
-    def makeEnv(rank: int, isEval: bool = False, seed: int = 0):
+    def makeEnv(seed: int, rank: int, isEval: bool = False):
         def _init():
             _, env = createPyboyEnv(
                 args.rom,
@@ -54,11 +54,19 @@ def train(args):
         set_random_seed(seed)
         return _init
 
+    seed = args.seed
+    if seed == -1:
+        seed = np.random.randint(2**32 - 1, dtype="int64").item()
+    print(f"seed: {seed}")
+
     numTrainingEnvs = (
         os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
     )
-    trainingEnv = SubprocVecEnv([makeEnv(i) for i in range(numTrainingEnvs)])
-    evalEnv = DummyVecEnv([makeEnv(0, isEval=True)])
+    trainingVec = SubprocVecEnv
+    if numTrainingEnvs == 1:
+        trainingEnv = DummyVecEnv
+    trainingEnv = trainingEnv([makeEnv(seed, i) for i in range(numTrainingEnvs)])
+    evalEnv = DummyVecEnv([makeEnv(seed, 0, isEval=True)])
 
     projectName = gameName.replace("_", " ").title()
 
@@ -327,6 +335,9 @@ if __name__ == "__main__":
         type=str,
         default="auto",
         help="device to use to train, cpu, cuda or auto",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=-1, help="seed to make randomness reproducible"
     )
     parser.add_argument(
         "--disable-wandb",
