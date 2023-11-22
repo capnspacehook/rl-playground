@@ -416,7 +416,9 @@ class MarioLandSettings(EnvSettings):
                 # 4: fire flower with star
                 randPowerup = random.randint(0, 4)
                 if randPowerup in (0, 2, 4):
-                    self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 248)
+                    self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
+                    # set star song so timer functions correctly
+                    self.pyboy.set_memory_value(0xDFE8, 0x0C)
                 if randPowerup != STATUS_SMALL:
                     self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, STATUS_BIG)
                     if randPowerup > 2:
@@ -424,7 +426,7 @@ class MarioLandSettings(EnvSettings):
 
                 prevState = curState
                 curState = self.gameState()
-                self._handlePowerup(prevState, curState, True)
+                self._handlePowerup(prevState, curState)
 
         # level checkpoints get less time
         timerHundreds = 4 - self.stateCheckpoint
@@ -491,17 +493,14 @@ class MarioLandSettings(EnvSettings):
             else:
                 self.evalNoProgress = 0
 
-        powerup = self._handlePowerup(prevState, curState, False)
+        powerup = self._handlePowerup(prevState, curState)
 
         reward = clock + movement + checkpoint + powerup
 
         return reward, curState
 
     def _handlePowerup(
-        self,
-        prevState: MarioLandGameState,
-        curState: MarioLandGameState,
-        manuallySet: bool,
+        self, prevState: MarioLandGameState, curState: MarioLandGameState
     ) -> int:
         # only reward getting star once
         powerup = 0
@@ -509,10 +508,6 @@ class MarioLandSettings(EnvSettings):
             curState.gotStar = False
         if curState.gotStar:
             self.invincibilityTimer = STAR_TIME
-            if manuallySet:
-                # when a star is given to mario via manipulating RAM
-                # the invinciblility lasts a bit longer
-                self.invincibilityTimer += 36
             # The actual star timer is set to 248 and only ticks down
             # when the frame counter is a one greater than a number
             # divisible by four. Don't ask me why. This accounts for
@@ -691,6 +686,7 @@ Powerup: {curState.powerupStatus}
 Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
 X, Y: {curState.xPos}, {curState.yPos}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
+Object type {self.pyboy.get_memory_value(0xFFFB)}
 """
         print(s[1:], flush=True)
 
