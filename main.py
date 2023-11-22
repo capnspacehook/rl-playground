@@ -64,8 +64,8 @@ def train(args):
     )
     trainingVec = SubprocVecEnv
     if numTrainingEnvs == 1:
-        trainingEnv = DummyVecEnv
-    trainingEnv = trainingEnv([makeEnv(seed, i) for i in range(numTrainingEnvs)])
+        trainingVec = DummyVecEnv
+    trainingEnv = trainingVec([makeEnv(seed, i) for i in range(numTrainingEnvs)])
     evalEnv = DummyVecEnv([makeEnv(seed, 0, isEval=True)])
 
     projectName = gameName.replace("_", " ").title()
@@ -224,9 +224,7 @@ def playtest(args):
     _, env = createPyboyEnv(
         args.rom, args.render, args.emulation_speed, isPlaytest=True
     )
-    env = DummyVecEnv([lambda: env])
-    model = args.algo("MlpPolicy", env)
-    obs = env.reset()
+    env.reset()
 
     rewards = []
     recentRewards = []
@@ -234,15 +232,15 @@ def playtest(args):
 
     try:
         while not done:
-            action, _ = model.predict(obs)
-            obs, reward, done, _ = env.step(action)
+            _, reward, term, trunc, _ = env.step(0)
+            done = term or trunc
             if reward != 0:
                 rewards.append(reward)
                 if len(recentRewards) == 3:
                     recentRewards.pop()
                 recentRewards.insert(0, reward)
 
-            print(f"Recent rewards: {recentRewards}")
+            print(f"Recent rewards: {recentRewards}", flush=True)
     except KeyboardInterrupt:
         pass
 
@@ -361,19 +359,20 @@ if __name__ == "__main__":
         parser.print_help()
         exit(1)
 
-    args.algorithm = args.algorithm.lower()
-    match args.algorithm:
-        case "ppo":
-            args.algo = PPO
+    if args.train or args.evaluate:
+        args.algorithm = args.algorithm.lower()
+        match args.algorithm:
+            case "ppo":
+                args.algo = PPO
 
-            if args.save_replay_buffers:
-                print("PPO doesn't have a replay buffer")
+                if args.save_replay_buffers:
+                    print("PPO doesn't have a replay buffer")
+                    exit(1)
+            case "qrdqn":
+                args.algo = QRDQN
+            case _:
+                print(f"invalid algorithm {args.algorithm}")
                 exit(1)
-        case "qrdqn":
-            args.algo = QRDQN
-        case _:
-            print(f"invalid algorithm {args.algorithm}")
-            exit(1)
 
     if args.evaluate or args.replay or args.playtest:
         args.render = True
