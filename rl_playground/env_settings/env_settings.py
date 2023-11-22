@@ -45,7 +45,7 @@ class EnvSettings:
         """Get game state from pyboy to save important information"""
         raise Exception("gameState not implemented!")
 
-    def observation(self, gameState: GameState) -> Any:
+    def observation(self, prevState: GameState, curState: GameState) -> Any:
         raise Exception("observation not implemented!")
 
     def info(self, gameState: GameState) -> dict[str, Any]:

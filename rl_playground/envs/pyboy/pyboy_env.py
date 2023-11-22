@@ -93,7 +93,7 @@ class PyBoyEnv(Env):
 
         self.button_is_pressed = {button: False for button in self._buttons}
 
-        return self.envSettings.observation(self.prevGameState), {}
+        return self.envSettings.observation(self.prevGameState, self.prevGameState), {}
 
     def step(self, action_idx: Any) -> tuple[Any, float, bool, bool, dict[str, Any]]:
         if self.prevGameState is None:
@@ -115,6 +115,7 @@ class PyBoyEnv(Env):
             info["reward"] = reward
             # self.agentStats.append(info)
 
+        obs = self.envSettings.observation(self.prevGameState, curGameState)
         terminated = pyboyDone or self.envSettings.terminated(
             self.prevGameState, curGameState
         )
@@ -122,13 +123,7 @@ class PyBoyEnv(Env):
 
         self.prevGameState = curGameState
 
-        return (
-            self.envSettings.observation(curGameState),
-            reward,
-            terminated,
-            truncated,
-            info,
-        )
+        return obs, reward, terminated, truncated, info
 
     def sendInputs(self, actions: list[int]):
         # release buttons that were pressed in the past

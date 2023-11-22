@@ -57,13 +57,19 @@ RANDOM_POWERUP_CHANCE = 25
 GAME_AREA_HEIGHT = 16
 GAME_AREA_WIDTH = 20
 
+DOUBLE_X_SPEED_MEM_VAL = 0xC20E
+MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
+MARIO_Y_POS_MEM_VAL = 0xC201
 STATUS_TIMER_MEM_VAL = 0xFFA6
 DEAD_JUMP_TIMER_MEM_VAL = 0xC0AC
 POWERUP_STATUS_MEM_VAL = 0xFF99
 HAS_FIRE_FLOWER_MEM_VAL = 0xFFB5
 STAR_TIMER_MEM_VAL = 0xC0D3
 FRAME_COUNTER_MEM_VAL = 0xDA00
-PROCESSING_OBJECT = 0xFFFB
+PROCESSING_OBJECT_MEM_VAL = 0xFFFB
+
+MOVING_LEFT = 0x20
+OBJ_STAR = 0x34
 
 STATUS_SMALL = 0
 STATUS_BIG = 1
@@ -88,13 +94,22 @@ class MarioLandGameState(GameState):
         real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
         self.xPos = levelBlock * 16 + real + xPos
 
-        yPos = self.pyboy.get_memory_value(0xC201)
-        if yPos <= 183:
-            # 183 is lowest position, y coordinate is flipped, 0 is higher than 1
-            self.yPos = 183 - yPos
+        self.xSpeed = self.pyboy.get_memory_value(DOUBLE_X_SPEED_MEM_VAL)
+        if self.xSpeed != 0:
+            self.xSpeed = int(self.xSpeed // 2)
+            if (
+                self.pyboy.get_memory_value(MARIO_MOVING_DIRECTION_MEM_VAL)
+                == MOVING_LEFT
+            ):
+                self.xSpeed = -self.xSpeed
+
+        yPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
+        # 185 is lowest y pos before mario is dead, y coordinate is flipped, 0 is higher than 1
+        if yPos <= 185:
+            self.yPos = 185 - yPos
         else:
             # handle underflow
-            self.yPos = 183 + (256 - yPos)
+            self.yPos = 185 + (256 - yPos)
 
         self.timeLeft = self.gameWrapper.time_left
         self.livesLeft = self.gameWrapper.lives_left
@@ -116,7 +131,7 @@ class MarioLandGameState(GameState):
         if starTimer != 0:
             self.hasStar = True
             self.isInvincible = True
-            if self.pyboy.get_memory_value(PROCESSING_OBJECT) == 0x34:
+            if self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL) == OBJ_STAR:
                 self.gotStar = True
         elif powerupStatus == 1:
             self.powerupStatus = STATUS_BIG
@@ -551,13 +566,15 @@ class MarioLandSettings(EnvSettings):
 
         return powerup
 
-    def observation(self, gameState: MarioLandGameState) -> Any:
+    def observation(
+        self, prevState: MarioLandGameState, curState: MarioLandGameState
+    ) -> Any:
         obs = self.gameWrapper._game_area_np(self.tileSet)
 
         # if mario is invincible his sprites will periodically flash by
         # cycling between being visible and not visible, ensure they are
         # always visible in the game area
-        if gameState.isInvincible:
+        if curState.isInvincible:
             self._drawMario(obs)
 
         # flatten the game area array so it's Box compatible
@@ -567,11 +584,13 @@ class MarioLandSettings(EnvSettings):
         return np.append(
             flatObs,
             [
-                gameState.powerupStatus,
-                gameState.hasStar,
-                gameState.invincibleTimer,
-                gameState.xPos,
-                gameState.yPos,
+                curState.powerupStatus,
+                curState.hasStar,
+                curState.invincibleTimer,
+                curState.xPos,
+                curState.yPos,
+                curState.xSpeed,
+                curState.yPos - prevState.yPos,
             ],
         )
 
@@ -658,10 +677,11 @@ class MarioLandSettings(EnvSettings):
         size = GAME_AREA_HEIGHT * GAME_AREA_WIDTH
         b = Box(low=0, high=TILES, shape=(size,))
         # TODO: make invincible an accurate timer with frameskips
-        # add space for powerup status, is invincible, star timer, x and y pos
+        # add space for powerup status, is invincible, star timer,
+        # x and y pos, x and y speed
         # dunno max x pos so just making it max uint16
-        low = np.append(b.low, [0, 0, 0, 0, 0])
-        high = np.append(b.high, [3, 1, 1000, 65_535, 255])
+        low = np.append(b.low, [0, 0, 0, 0, 0, -2, -4])
+        high = np.append(b.high, [3, 1, 1000, 65_535, 255, 2, 4])
         return Box(low=low, high=high, dtype=np.int32)
 
     def normalizeObservation(self) -> bool:
@@ -690,8 +710,9 @@ Max level progress: {curState.levelProgressMax}
 Powerup: {curState.powerupStatus}
 Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
 X, Y: {curState.xPos}, {curState.yPos}
+Speeds: {curState.xSpeed} {curState.yPos - prevState.yPos}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
-Object type {self.pyboy.get_memory_value(0xFFFB)}
+Object type {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
 """
         print(s[1:], flush=True)
 
