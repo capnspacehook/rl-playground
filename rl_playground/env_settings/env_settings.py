@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from gymnasium import Space
 
@@ -19,7 +19,7 @@ class EnvSettings:
 
     def normalizeObservation(self) -> bool:
         """Whether observations should be normalized or not"""
-        return False
+        return True
 
     def evalEpisodes(self) -> int:
         """Number of evaluation episodes that should be preformed"""
@@ -50,6 +50,9 @@ class EnvSettings:
 
     def info(self, gameState: GameState) -> dict[str, Any]:
         return {}
+
+    def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
+        return ()
 
     def terminated(self, prevState: GameState, curState: GameState) -> bool:
         """Returns true if the game should end, ie game over"""

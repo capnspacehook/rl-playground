@@ -1,4 +1,5 @@
-from typing import Any, Dict
+from curses import curs_set
+from typing import Any, Dict, List, Tuple
 from os import listdir
 from os.path import basename, isfile, join, splitext
 import random
@@ -39,7 +40,7 @@ ppoConfig = {
     "ent_coef": 7.513020308749457e-06,
     "gae_lambda": 0.98,
     "gamma": 0.99,
-    "learning_rate": 3.183807492928217e-05,
+    "learning_rate": 1e-05,
     "max_grad_norm": 5,
     "n_epochs": 5,
     "n_steps": 512,
@@ -670,9 +671,6 @@ class MarioLandSettings(EnvSettings):
         high = np.append(b.high, [3, 1, 1000, 65_535, 255, 2, 4])
         return Box(low=low, high=high, dtype=np.int32)
 
-    def normalizeObservation(self) -> bool:
-        return True
-
     def hyperParameters(self, algo: str) -> Dict[str, Any]:
         match algo:
             case "qrdqn":
@@ -687,6 +685,16 @@ class MarioLandSettings(EnvSettings):
 
     def gameState(self):
         return MarioLandGameState(self.pyboy)
+
+    def info(self, curState: MarioLandGameState) -> Dict[str, Any]:
+        return {
+            "worldLevel": curState.world,
+            "levelProgress": curState.levelProgressMax,
+        }
+
+    def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
+        world, level = info["worldLevel"]
+        return [(f"{world}-{level}_progress", info["levelProgress"])]
 
     def printGameState(
         self, prevState: MarioLandGameState, curState: MarioLandGameState

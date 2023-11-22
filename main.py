@@ -117,6 +117,7 @@ def train(args):
         callbacks = [
             RecordAndEvalCallback(
                 evalEnv,
+                envSettings,
                 n_eval_episodes=envSettings.evalEpisodes(),
                 eval_freq=callbackFreq,
                 best_model_save_path=saveDir,

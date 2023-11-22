@@ -11,6 +11,8 @@ from stable_baselines3.common.logger import TensorBoardOutputFormat, Video
 from stable_baselines3.common.vec_env import sync_envs_normalization
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
+from rl_playground.env_settings.env_settings import EnvSettings
+
 
 # Copied from rl-zoo3 to avoid dependency
 class RawStatisticsCallback(BaseCallback):
@@ -55,6 +57,7 @@ class RecordAndEvalCallback(BaseCallback):
     def __init__(
         self,
         eval_env: VecEnv,
+        env_settings: EnvSettings,
         eval_freq: int = 0,
         n_eval_episodes: int = 1,
         best_model_save_path: Optional[Path] = None,
@@ -75,6 +78,7 @@ class RecordAndEvalCallback(BaseCallback):
         super().__init__(verbose)
 
         self.eval_env = eval_env
+        self.env_settings = env_settings
         self._eval_freq = eval_freq
         self.best_mean_reward = -np.inf
         self.last_mean_reward = -np.inf
@@ -93,12 +97,15 @@ class RecordAndEvalCallback(BaseCallback):
             screens = []
 
             def grab_screens(_locals: Dict[str, Any], _globals: Dict[str, Any]) -> None:
-                """
-                Renders the environment in its current state, recording the screen in the captured `screens` list
+                if _locals["done"]:
+                    info = _locals["info"]
+                    logEntries = self.env_settings.evalInfoLogEntries(info)
+                    for entry in logEntries:
+                        key, value = entry
+                        self.logger.record(
+                            f"eval/{key.lower()}", value, exclude=("stdout")
+                        )
 
-                :param _locals: A dictionary containing all local variables of the callback's scope
-                :param _globals: A dictionary containing all global variables of the callback's scope
-                """
                 screen = self.eval_env.render()
                 # PyTorch uses CxHxW vs HxWxC gym (and tensorflow) image convention
                 screens.append(screen.transpose(2, 0, 1))
@@ -134,7 +141,7 @@ class RecordAndEvalCallback(BaseCallback):
             screens = np.expand_dims(np.stack(screens), axis=0)
             self.logger.record(
                 "eval/video",
-                Video(screens, fps=20),  # TODO: find dynamically
+                Video(screens, fps=12),  # TODO: find dynamically
                 exclude=("stdout", "log", "json", "csv"),
             )
 
