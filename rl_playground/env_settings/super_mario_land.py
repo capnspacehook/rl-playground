@@ -63,6 +63,7 @@ POWERUP_STATUS_MEM_VAL = 0xFF99
 HAS_FIRE_FLOWER_MEM_VAL = 0xFFB5
 STAR_TIMER_MEM_VAL = 0xC0D3
 FRAME_COUNTER_MEM_VAL = 0xDA00
+PROCESSING_OBJECT = 0xFFFB
 
 STATUS_SMALL = 0
 STATUS_BIG = 1
@@ -109,11 +110,14 @@ class MarioLandGameState(GameState):
 
         self.powerupStatus = STATUS_SMALL
         self.gotStar = False
+        self.hasStar = False
         self.isInvincible = False
         self.invincibleTimer = 0
         if starTimer != 0:
-            self.gotStar = True
+            self.hasStar = True
             self.isInvincible = True
+            if self.pyboy.get_memory_value(PROCESSING_OBJECT) == 0x34:
+                self.gotStar = True
         elif powerupStatus == 1:
             self.powerupStatus = STATUS_BIG
         elif powerupStatus == 2:
@@ -123,8 +127,6 @@ class MarioLandGameState(GameState):
                 self.powerupStatus = STATUS_BIG
         if powerupStatus == 3 or powerupStatus == 4:
             self.isInvincible = True
-
-        self.hasStar = self.gotStar
 
 
 # Mario and Daisy
@@ -414,8 +416,10 @@ class MarioLandSettings(EnvSettings):
                 # 2: big with star
                 # 3: fire flower
                 # 4: fire flower with star
+                gotStar = False
                 randPowerup = random.randint(0, 4)
                 if randPowerup in (0, 2, 4):
+                    gotStar = True
                     self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
                     # set star song so timer functions correctly
                     self.pyboy.set_memory_value(0xDFE8, 0x0C)
@@ -426,6 +430,10 @@ class MarioLandSettings(EnvSettings):
 
                 prevState = curState
                 curState = self.gameState()
+                if gotStar:
+                    curState.gotStar = True
+                    curState.hasStar = True
+                    curState.isInvincible = True
                 self._handlePowerup(prevState, curState)
 
         # level checkpoints get less time
@@ -502,10 +510,7 @@ class MarioLandSettings(EnvSettings):
     def _handlePowerup(
         self, prevState: MarioLandGameState, curState: MarioLandGameState
     ) -> int:
-        # only reward getting star once
         powerup = 0
-        if (prevState.gotStar or prevState.hasStar) and curState.gotStar:
-            curState.gotStar = False
         if curState.gotStar:
             self.invincibilityTimer = STAR_TIME
             # The actual star timer is set to 248 and only ticks down
