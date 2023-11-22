@@ -1,7 +1,7 @@
 import gymnasium
 
 
-class SkipFrame(gymnasium.Wrapper):
+class FrameSkip(gymnasium.Wrapper):
     """Return only every `skip`-th frame"""
 
     def __init__(self, env, skip):

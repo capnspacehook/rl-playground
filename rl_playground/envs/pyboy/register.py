@@ -9,7 +9,7 @@ from stable_baselines3.common.monitor import Monitor
 from rl_playground.env_settings.metroid2 import Metroid2Settings
 from rl_playground.env_settings.super_mario_land import MarioLandSettings
 from rl_playground.envs.pyboy.pyboy_env import PyBoyEnv
-from rl_playground.envs.pyboy.wrappers import SkipFrame
+from rl_playground.envs.pyboy.wrappers import FrameSkip
 
 
 def createPyboyEnv(
@@ -54,8 +54,8 @@ def createPyboyEnv(
     )
 
     env = Monitor(env)
-    env = SkipFrame(env, skip=4)
-    env = FrameStack(env, num_stack=4)
+    env = FrameSkip(env, skip=4)
+    env = FrameStack(env, num_stack=6)
 
     # check_env(env)
 

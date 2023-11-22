@@ -1,4 +1,3 @@
-import itertools
 from typing import Any, Dict
 from os import listdir
 from os.path import basename, isfile, join, splitext
@@ -35,7 +34,7 @@ qrdqnConfig = {
 
 ppoConfig = {
     "policy": "MlpPolicy",
-    "batch_size": 64,
+    "batch_size": 512,
     "clip_range": 0.2,
     "ent_coef": 7.513020308749457e-06,
     "gae_lambda": 0.98,
@@ -46,7 +45,7 @@ ppoConfig = {
     "n_steps": 512,
     "vf_coef": 0.33653746631712467,
     "policy_kwargs": dict(
-        activation_fn=nn.tanh,
+        activation_fn=nn.relu,
         net_arch=dict(pi=[256, 256], vf=[256, 256]),
     ),
 }
@@ -111,9 +110,6 @@ class MarioLandGameState(GameState):
             # handle underflow
             self.yPos = 185 + (256 - yPos)
 
-        self.timeLeft = self.gameWrapper.time_left
-        self.livesLeft = self.gameWrapper.lives_left
-        self.score = self.gameWrapper.score
         self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
         self.world = self.gameWrapper.world
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
@@ -433,7 +429,8 @@ class MarioLandSettings(EnvSettings):
                 # 4: fire flower with star
                 gotStar = False
                 randPowerup = random.randint(0, 4)
-                if randPowerup in (0, 2, 4):
+                # TODO: change back when pyboy bug is fixed
+                if False:  # randPowerup in (0, 2, 4):
                     gotStar = True
                     self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
                     # set star song so timer functions correctly
@@ -496,7 +493,7 @@ class MarioLandSettings(EnvSettings):
             return 50, curState
 
         # add time punishment every step to encourage speed more
-        clock = -0.25
+        clock = -0.1
         movement = curState.xPos - prevState.xPos
 
         # reward for passing checkpoints
@@ -636,41 +633,30 @@ class MarioLandSettings(EnvSettings):
         return curState.deadJumpTimer != 0 or curState.statusTimer == TIMER_DEATH
 
     def actionSpace(self):
-        baseActions = [
-            WindowEvent.PASS,
-            WindowEvent.PRESS_BUTTON_A,
-            WindowEvent.PRESS_BUTTON_B,
-            WindowEvent.PRESS_ARROW_LEFT,
-            WindowEvent.PRESS_ARROW_RIGHT,
+        actions = [
+            [WindowEvent.PASS],
+            [WindowEvent.PRESS_ARROW_LEFT],
+            [WindowEvent.PRESS_ARROW_RIGHT],
+            [WindowEvent.PRESS_BUTTON_B],
+            [WindowEvent.PRESS_BUTTON_A],
+            [WindowEvent.PRESS_BUTTON_B, WindowEvent.PRESS_BUTTON_A],
+            [WindowEvent.PRESS_ARROW_LEFT, WindowEvent.PRESS_BUTTON_B],
+            [WindowEvent.PRESS_ARROW_RIGHT, WindowEvent.PRESS_BUTTON_B],
+            [WindowEvent.PRESS_ARROW_LEFT, WindowEvent.PRESS_BUTTON_A],
+            [WindowEvent.PRESS_ARROW_RIGHT, WindowEvent.PRESS_BUTTON_A],
+            [
+                WindowEvent.PRESS_ARROW_LEFT,
+                WindowEvent.PRESS_BUTTON_B,
+                WindowEvent.PRESS_BUTTON_A,
+            ],
+            [
+                WindowEvent.PRESS_ARROW_RIGHT,
+                WindowEvent.PRESS_BUTTON_B,
+                WindowEvent.PRESS_BUTTON_A,
+            ],
         ]
 
-        totalActionsWithRepeats = list(itertools.permutations(baseActions, 2))
-        withoutRepeats = []
-
-        for combination in totalActionsWithRepeats:
-            # remove useless action combinations
-            if (
-                isinstance(combination, tuple)
-                and WindowEvent.PASS in combination
-                or combination
-                == (
-                    WindowEvent.PRESS_ARROW_LEFT,
-                    WindowEvent.PRESS_ARROW_RIGHT,
-                )
-                or combination
-                == (
-                    WindowEvent.PRESS_ARROW_RIGHT,
-                    WindowEvent.PRESS_ARROW_LEFT,
-                )
-            ):
-                continue
-            reversedCombination = combination[::-1]
-            if reversedCombination not in withoutRepeats:
-                withoutRepeats.append(combination)
-
-        filteredActions = [[action] for action in baseActions] + withoutRepeats
-
-        return filteredActions, Discrete(len(filteredActions))
+        return actions, Discrete(len(actions))
 
     def observationSpace(self) -> Space:
         # game area
