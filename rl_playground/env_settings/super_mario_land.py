@@ -40,7 +40,7 @@ ppoConfig = {
     "ent_coef": 7.513020308749457e-06,
     "gae_lambda": 0.98,
     "gamma": 0.99,
-    "learning_rate": 1e-05,
+    "learning_rate": 3e-05,
     "max_grad_norm": 5,
     "n_epochs": 5,
     "n_steps": 512,
@@ -196,7 +196,8 @@ world_3_4_blocks = (20, common_blocks)
 moving_block = (21, [239])
 lift_block = (22, [230])
 falling_block = (23, [238])
-bouncing_boulder = (24, [194, 195, 210, 211])
+bouncing_boulder_tiles = [194, 195, 210, 211]
+bouncing_boulder = (24, bouncing_boulder_tiles)
 pushable_blocks = (25, [128, 130, 354])  # 354 invisible on 2-2
 question_block = (26, [129])
 # add pipes here if they should be separate
@@ -494,8 +495,47 @@ class MarioLandSettings(EnvSettings):
             return 50, curState
 
         # add time punishment every step to encourage speed more
-        clock = -0.1
+        clock = 0
         movement = curState.xPos - prevState.xPos
+
+        # in world 3 reward standing on bouncing boulders to encourage
+        # waiting for them to fall and ride on them instead of immediately
+        # jumping into spikes
+        standingOnBoulder = 0
+        if curState.world[0] == 3:
+            boulderSprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(
+                bouncing_boulder_tiles, on_screen=True
+            )
+            if len(boulderSprites) != 0:
+                leftMarioLeg = self.pyboy.botsupport_manager().sprite(5)
+                leftMarioLegXPos = leftMarioLeg.x
+                rightMarioLegXPos = leftMarioLegXPos + 8
+                marioLegsYPos = leftMarioLeg.y
+                if leftMarioLeg.attr_x_flip:
+                    rightMarioLegXPos = leftMarioLegXPos
+                    leftMarioLegXPos -= 8
+
+                for boulderSpriteIdxs in boulderSprites:
+                    for boulderSpriteIdx in boulderSpriteIdxs:
+                        boulderSprite = self.pyboy.botsupport_manager().sprite(
+                            boulderSpriteIdx
+                        )
+                        # y positions are inverted for some reason
+                        if marioLegsYPos + 8 == boulderSprite.y and (
+                            (
+                                leftMarioLegXPos >= boulderSprite.x - 4
+                                and leftMarioLegXPos <= boulderSprite.x + 4
+                            )
+                            or (
+                                rightMarioLegXPos >= boulderSprite.x - 4
+                                and rightMarioLegXPos <= boulderSprite.x + 4
+                            )
+                        ):
+                            standingOnBoulder = 5
+                            break
+
+                    if standingOnBoulder != 0:
+                        break
 
         # reward for passing checkpoints
         checkpoint = 0
@@ -516,7 +556,7 @@ class MarioLandSettings(EnvSettings):
 
         powerup = self._handlePowerup(prevState, curState)
 
-        reward = clock + movement + checkpoint + powerup
+        reward = clock + movement + standingOnBoulder + checkpoint + powerup
 
         return reward, curState
 
