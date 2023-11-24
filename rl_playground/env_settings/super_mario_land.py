@@ -35,11 +35,11 @@ qrdqnConfig = {
 
 ppoConfig = {
     "policy": "MlpPolicy",
-    "batch_size": 512,
+    "batch_size": 512,  # Try 256
     "clip_range": 0.2,
-    "ent_coef": 7.513020308749457e-06,  # Try 9...
+    "ent_coef": 9.513020308749457e-06,  # Try 9...
     "gae_lambda": 0.98,
-    "gamma": 0.99,  # Try 0.995
+    "gamma": 0.995,
     "learning_rate": 3e-05,  # Try 2e-05
     "max_grad_norm": 5,
     "n_epochs": 5,
@@ -50,6 +50,17 @@ ppoConfig = {
         net_arch=dict(pi=[256, 256], vf=[256, 256]),
     ),
 }
+
+# Reward values
+DEATH_PUNISHMENT = -25
+HIT_PUNISHMENT = -5
+CLOCK_PUNISHMENT = -0.1
+MOVEMENT_REWARD_COEF = 1
+MUSHROOM_REWARD = 20
+FLOWER_REWARD = 20
+STAR_REWARD = 30
+BOULDER_REWARD = 5
+CHECKPOINT_REWARD = 25
 
 # Random env settings
 RANDOM_NOOP_FRAMES = 60
@@ -82,17 +93,6 @@ TIMER_DEATH = 0x90
 TIMER_LEVEL_CLEAR = 0xF0
 STAR_TIME = 956
 SHRINK_TIME = 0x50 + 0x40
-
-# Reward values
-DEATH_PUNISHMENT = -25
-HIT_PUNISHMENT = -5
-CLOCK_PUNISHMENT = -0.1
-MOVEMENT_REWARD_COEF = 1
-MUSHROOM_REWARD = 20
-FLOWER_REWARD = 20
-STAR_REWARD = 30
-BOULDER_REWARD = 5
-CHECKPOINT_REWARD = 25
 
 
 class MarioLandGameState(GameState):
@@ -514,42 +514,11 @@ class MarioLandSettings(EnvSettings):
 
         # in world 3 reward standing on bouncing boulders to encourage
         # waiting for them to fall and ride on them instead of immediately
-        # jumping into spikes
+        # jumping into spikes, but only if the boulders are moving to the
+        # right
         standingOnBoulder = 0
-        if curState.world[0] == 3:
-            boulderSprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(
-                bouncing_boulder_tiles, on_screen=True
-            )
-            if len(boulderSprites) != 0:
-                leftMarioLeg = self.pyboy.botsupport_manager().sprite(5)
-                leftMarioLegXPos = leftMarioLeg.x
-                rightMarioLegXPos = leftMarioLegXPos + 8
-                marioLegsYPos = leftMarioLeg.y
-                if leftMarioLeg.attr_x_flip:
-                    rightMarioLegXPos = leftMarioLegXPos
-                    leftMarioLegXPos -= 8
-
-                for boulderSpriteIdxs in boulderSprites:
-                    for boulderSpriteIdx in boulderSpriteIdxs:
-                        boulderSprite = self.pyboy.botsupport_manager().sprite(
-                            boulderSpriteIdx
-                        )
-                        # y positions are inverted for some reason
-                        if marioLegsYPos + 8 == boulderSprite.y and (
-                            (
-                                leftMarioLegXPos >= boulderSprite.x - 4
-                                and leftMarioLegXPos <= boulderSprite.x + 4
-                            )
-                            or (
-                                rightMarioLegXPos >= boulderSprite.x - 4
-                                and rightMarioLegXPos <= boulderSprite.x + 4
-                            )
-                        ):
-                            standingOnBoulder = BOULDER_REWARD
-                            break
-
-                    if standingOnBoulder != 0:
-                        break
+        if curState.world[0] == 3 and movement >= 0 and self._standingOnBoulder():
+            standingOnBoulder = BOULDER_REWARD
 
         # reward for passing checkpoints
         checkpoint = 0
@@ -573,6 +542,39 @@ class MarioLandSettings(EnvSettings):
         reward = clock + movement + standingOnBoulder + checkpoint + powerup
 
         return reward, curState
+
+    def _standingOnBoulder(self) -> bool:
+        boulderSprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(
+            bouncing_boulder_tiles, on_screen=True
+        )
+        if len(boulderSprites) != 0:
+            leftMarioLeg = self.pyboy.botsupport_manager().sprite(5)
+            leftMarioLegXPos = leftMarioLeg.x
+            rightMarioLegXPos = leftMarioLegXPos + 8
+            marioLegsYPos = leftMarioLeg.y
+            if leftMarioLeg.attr_x_flip:
+                rightMarioLegXPos = leftMarioLegXPos
+                leftMarioLegXPos -= 8
+
+            for boulderSpriteIdxs in boulderSprites:
+                for boulderSpriteIdx in boulderSpriteIdxs:
+                    boulderSprite = self.pyboy.botsupport_manager().sprite(
+                        boulderSpriteIdx
+                    )
+                    # y positions are inverted for some reason
+                    if marioLegsYPos + 8 == boulderSprite.y and (
+                        (
+                            leftMarioLegXPos >= boulderSprite.x - 4
+                            and leftMarioLegXPos <= boulderSprite.x + 4
+                        )
+                        or (
+                            rightMarioLegXPos >= boulderSprite.x - 4
+                            and rightMarioLegXPos <= boulderSprite.x + 4
+                        )
+                    ):
+                        return True
+
+        return False
 
     def _handlePowerup(
         self, prevState: MarioLandGameState, curState: MarioLandGameState
