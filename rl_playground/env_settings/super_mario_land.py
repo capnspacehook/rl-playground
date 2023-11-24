@@ -37,10 +37,10 @@ ppoConfig = {
     "policy": "MlpPolicy",
     "batch_size": 512,
     "clip_range": 0.2,
-    "ent_coef": 7.513020308749457e-06,
+    "ent_coef": 7.513020308749457e-06,  # Try 9...
     "gae_lambda": 0.98,
-    "gamma": 0.99,
-    "learning_rate": 3e-05,
+    "gamma": 0.99,  # Try 0.995
+    "learning_rate": 3e-05,  # Try 2e-05
     "max_grad_norm": 5,
     "n_epochs": 5,
     "n_steps": 512,
@@ -51,12 +51,15 @@ ppoConfig = {
     ),
 }
 
+# Random env settings
 RANDOM_NOOP_FRAMES = 60
 RANDOM_POWERUP_CHANCE = 25
 
+# Game area dimensions
 GAME_AREA_HEIGHT = 16
 GAME_AREA_WIDTH = 20
 
+# Memory constants
 DOUBLE_X_SPEED_MEM_VAL = 0xC20E
 MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
 MARIO_Y_POS_MEM_VAL = 0xC201
@@ -79,6 +82,17 @@ TIMER_DEATH = 0x90
 TIMER_LEVEL_CLEAR = 0xF0
 STAR_TIME = 956
 SHRINK_TIME = 0x50 + 0x40
+
+# Reward values
+DEATH_PUNISHMENT = -25
+HIT_PUNISHMENT = -5
+CLOCK_PUNISHMENT = -0.1
+MOVEMENT_REWARD_COEF = 1
+MUSHROOM_REWARD = 20
+FLOWER_REWARD = 20
+STAR_REWARD = 30
+BOULDER_REWARD = 5
+CHECKPOINT_REWARD = 25
 
 
 class MarioLandGameState(GameState):
@@ -470,7 +484,7 @@ class MarioLandSettings(EnvSettings):
 
         # return flat punishment on mario's death
         if self._isDead(curState):
-            return -50, curState
+            return DEATH_PUNISHMENT, curState
 
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
@@ -479,7 +493,7 @@ class MarioLandSettings(EnvSettings):
             # to avoid processing unnecessary frames and the AI playing
             # levels we don't want it to
             if self.isEval:
-                return 50, curState
+                return CHECKPOINT_REWARD, curState
             else:
                 # load start of next level, not a level checkpoint
                 self.stateIdx += (2 - self.stateCheckpoint) + 1
@@ -492,11 +506,11 @@ class MarioLandSettings(EnvSettings):
             self.gameWrapper._level_progress_max = curState.xPos
             curState.levelProgressMax = curState.xPos
 
-            return 50, curState
+            return CHECKPOINT_REWARD, curState
 
         # add time punishment every step to encourage speed more
-        clock = 0
-        movement = curState.xPos - prevState.xPos
+        clock = CLOCK_PUNISHMENT
+        movement = (curState.xPos - prevState.xPos) * MOVEMENT_REWARD_COEF
 
         # in world 3 reward standing on bouncing boulders to encourage
         # waiting for them to fall and ride on them instead of immediately
@@ -531,7 +545,7 @@ class MarioLandSettings(EnvSettings):
                                 and rightMarioLegXPos <= boulderSprite.x + 4
                             )
                         ):
-                            standingOnBoulder = 5
+                            standingOnBoulder = BOULDER_REWARD
                             break
 
                     if standingOnBoulder != 0:
@@ -546,7 +560,7 @@ class MarioLandSettings(EnvSettings):
         ):
             self.currentCheckpoint += 1
             self._setNextCheckpoint(curState.world, self.currentCheckpoint)
-            checkpoint = 50
+            checkpoint = CHECKPOINT_REWARD
 
         if self.isEval:
             if curState.levelProgressMax - prevState.levelProgressMax == 0:
@@ -574,7 +588,7 @@ class MarioLandSettings(EnvSettings):
             frames = self.pyboy.get_memory_value(FRAME_COUNTER_MEM_VAL)
             extra = (frames - 1) % 4
             self.invincibilityTimer += extra
-            powerup += 40
+            powerup += STAR_REWARD
         if curState.hasStar:
             # current powerup status will be set to star, so set it to
             # the powerup of the last frame so the base powerup is accurate
@@ -586,17 +600,17 @@ class MarioLandSettings(EnvSettings):
         if curState.powerupStatus != prevState.powerupStatus:
             if prevState.powerupStatus == STATUS_SMALL:
                 # mario got a mushroom
-                powerup = 25
+                powerup = MUSHROOM_REWARD
             elif prevState.powerupStatus == STATUS_BIG:
                 if curState.powerupStatus == STATUS_FIRE:
-                    powerup = 20
+                    powerup = FLOWER_REWARD
                 elif curState.powerupStatus == STATUS_SMALL:
                     self.invincibilityTimer = SHRINK_TIME
-                    powerup = -10
+                    powerup = HIT_PUNISHMENT
             elif prevState.powerupStatus == STATUS_FIRE:
                 # mario got hit and lost the fire flower
                 self.invincibilityTimer = SHRINK_TIME
-                powerup = -10
+                powerup = HIT_PUNISHMENT
 
         if self.invincibilityTimer != 0:
             curState.invincibleTimer = self.invincibilityTimer
