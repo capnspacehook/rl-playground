@@ -1,3 +1,4 @@
+from curses import curs_set
 from typing import Any, Dict, List, Tuple
 from os import listdir
 from os.path import basename, isfile, join, splitext
@@ -86,8 +87,7 @@ SHRINK_TIME = 0x50 + 0x40
 DEATH_PUNISHMENT = -25
 HIT_PUNISHMENT = -5
 CLOCK_PUNISHMENT = -0.1
-SPEED_REWARD_COEF = 1
-PROGRESS_REWARD_COEF = 1.33
+MOVEMENT_REWARD_COEF = 1
 MUSHROOM_REWARD = 20
 FLOWER_REWARD = 20
 STAR_REWARD = 30
@@ -510,13 +510,7 @@ class MarioLandSettings(EnvSettings):
 
         # add time punishment every step to encourage speed more
         clock = CLOCK_PUNISHMENT
-
-        # reward more speed and making level progress, but don't directly
-        # punish moving left as it is sometimes necessary
-        xSpeed = abs(curState.xSpeed) * SPEED_REWARD_COEF
-        progress = (
-            curState.levelProgressMax - prevState.levelProgressMax
-        ) * PROGRESS_REWARD_COEF
+        movement = (curState.xPos - prevState.xPos) * MOVEMENT_REWARD_COEF
 
         # in world 3 reward standing on bouncing boulders to encourage
         # waiting for them to fall and ride on them instead of immediately
@@ -576,7 +570,7 @@ class MarioLandSettings(EnvSettings):
 
         powerup = self._handlePowerup(prevState, curState)
 
-        reward = clock + xSpeed + progress + standingOnBoulder + checkpoint + powerup
+        reward = clock + movement + standingOnBoulder + checkpoint + powerup
 
         return reward, curState
 
