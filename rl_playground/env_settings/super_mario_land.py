@@ -1,5 +1,4 @@
-from curses import curs_set
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Union
 from os import listdir
 from os.path import basename, isfile, join, splitext
 import random
@@ -33,6 +32,17 @@ qrdqnConfig = {
     },
 }
 
+
+def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
+    # Force conversion to float
+    _initial_value = float(initial_value)
+
+    def _schedule(progress_remaining: float) -> float:
+        return progress_remaining * _initial_value
+
+    return _schedule
+
+
 ppoConfig = {
     "policy": "MlpPolicy",
     "batch_size": 512,  # Try 256
@@ -40,7 +50,7 @@ ppoConfig = {
     "ent_coef": 9.513020308749457e-06,
     "gae_lambda": 0.98,
     "gamma": 0.995,
-    "learning_rate": 3e-05,  # Try 2e-05
+    "learning_rate": 3e-05,
     "max_grad_norm": 5,
     "n_epochs": 5,
     "n_steps": 512,
@@ -81,9 +91,16 @@ HAS_FIRE_FLOWER_MEM_VAL = 0xFFB5
 STAR_TIMER_MEM_VAL = 0xC0D3
 FRAME_COUNTER_MEM_VAL = 0xDA00
 PROCESSING_OBJECT_MEM_VAL = 0xFFFB
+BOSS1_TYPE_MEM_VAL = 0xD120
+BOSS1_HEALTH_MEM_VAL = 0xD12C
+BOSS2_TYPE_MEM_VAL = 0xD100
+BOSS2_HEALTH_MEM_VAL = 0xD10C
 
 MOVING_LEFT = 0x20
 OBJ_STAR = 0x34
+BOSS1_TYPE = 8
+BOSS2_TYPE = 50
+
 
 STATUS_SMALL = 0
 STATUS_BIG = 1
@@ -130,6 +147,21 @@ class MarioLandGameState(GameState):
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
         self.deadJumpTimer = self.pyboy.get_memory_value(DEAD_JUMP_TIMER_MEM_VAL)
 
+        self.bossActive = False
+        self.bossHealth = 0
+        if (
+            self.world == (1, 3)
+            and self.pyboy.get_memory_value(BOSS1_TYPE_MEM_VAL) == BOSS1_TYPE
+        ):
+            self.bossActive = True
+            self.bossHealth = self.pyboy.get_memory_value(BOSS1_HEALTH_MEM_VAL)
+        elif (
+            self.world == (3, 3)
+            and self.pyboy.get_memory_value(BOSS2_TYPE_MEM_VAL) == BOSS2_TYPE
+        ):
+            self.bossActive = True
+            self.bossHealth = self.pyboy.get_memory_value(BOSS2_HEALTH_MEM_VAL)
+
         powerupStatus = self.pyboy.get_memory_value(POWERUP_STATUS_MEM_VAL)
         hasFireFlower = self.pyboy.get_memory_value(HAS_FIRE_FLOWER_MEM_VAL)
         starTimer = self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)
@@ -175,8 +207,7 @@ common_blocks = (
     [
         142,
         143,
-        221,
-        222,
+        230,  # lift block
         231,
         232,
         233,
@@ -208,7 +239,7 @@ common_blocks = (
 world_1_2_blocks = (20, [*common_blocks, 319])  # 319 is scenery on worlds 3 and 4
 world_3_4_blocks = (20, common_blocks)
 moving_block = (21, [239])
-lift_block = (22, [230])
+crush_block = (22, [221, 222, 223])
 falling_block = (23, [238])
 bouncing_boulder_tiles = [194, 195, 210, 211]
 bouncing_boulder = (24, bouncing_boulder_tiles)
@@ -216,7 +247,7 @@ pushable_blocks = (25, [128, 130, 354])  # 354 invisible on 2-2
 question_block = (26, [129])
 # add pipes here if they should be separate
 spike = (28, [237])
-lever = (29, [255])  # Lever for level end
+lever = (29, [225])  # Lever for level end
 
 # Enemies
 goomba = (30, [144])
@@ -264,16 +295,12 @@ big_fist_rock = (62, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 
 base_tiles = [
     base_scripts,
-    # plane,
-    # submarine,
     mario_fireball,
-    # coin,
     mushroom,
     flower,
     star,
-    # heart,
     moving_block,
-    lift_block,
+    crush_block,
     falling_block,
     pushable_blocks,
     question_block,
@@ -538,6 +565,8 @@ class MarioLandSettings(EnvSettings):
                 self.evalNoProgress = 0
 
         powerup = self._handlePowerup(prevState, curState)
+
+        # TODO: reward for dealing boss damage or killing it
 
         reward = clock + movement + standingOnBoulder + checkpoint + powerup
 
