@@ -37,7 +37,7 @@ ppoConfig = {
     "policy": "MlpPolicy",
     "batch_size": 512,  # Try 256
     "clip_range": 0.2,
-    "ent_coef": 9.513020308749457e-06,  # Try 9...
+    "ent_coef": 9.513020308749457e-06,
     "gae_lambda": 0.98,
     "gamma": 0.995,
     "learning_rate": 3e-05,  # Try 2e-05
@@ -719,12 +719,10 @@ class MarioLandSettings(EnvSettings):
         # game area
         size = GAME_AREA_HEIGHT * GAME_AREA_WIDTH
         b = Box(low=0, high=TILES, shape=(size,))
-        # TODO: make invincible an accurate timer with frameskips
         # add space for powerup status, is invincible, star timer,
         # x and y pos, x and y speed
-        # dunno max x pos so just making it max uint16
         low = np.append(b.low, [0, 0, 0, 0, 0, -2, -4])
-        high = np.append(b.high, [3, 1, 1000, 65_535, 255, 2, 4])
+        high = np.append(b.high, [3, 1, 1000, 5000, 255, 2, 4])
         return Box(low=low, high=high, dtype=np.int32)
 
     def hyperParameters(self, algo: str) -> Dict[str, Any]:
