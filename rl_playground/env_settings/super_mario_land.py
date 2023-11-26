@@ -400,6 +400,7 @@ class MarioLandSettings(EnvSettings):
         self.levelCheckpoints = {
             (1, 1): [950, 1605],
             (1, 2): [1150, 1840],
+            (1, 3): [1065, 1927],
             (2, 1): [855, 1610],
             (2, 2): [870, 1975],
             (3, 1): [2130, 2784],
@@ -491,6 +492,7 @@ class MarioLandSettings(EnvSettings):
                     curState.isInvincible = True
                 self._handlePowerup(prevState, curState)
 
+        # TODO: doesn't work
         # level checkpoints get less time
         timerHundreds = 4 - self.stateCheckpoint
 
