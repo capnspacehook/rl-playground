@@ -490,14 +490,13 @@ class MarioLandSettings(EnvSettings):
                     curState.isInvincible = True
                 self._handlePowerup(prevState, curState)
 
-        # TODO: doesn't work
         # level checkpoints get less time
         timerHundreds = 4 - self.stateCheckpoint
 
         # set level timer
-        self.pyboy.set_memory_value(0x9831, timerHundreds)
-        self.pyboy.set_memory_value(0x9832, 0)
-        self.pyboy.set_memory_value(0x9833, 0)
+        self.pyboy.set_memory_value(0xDA00, 0x28)
+        self.pyboy.set_memory_value(0xDA01, 0)
+        self.pyboy.set_memory_value(0xDA02, timerHundreds)
 
         return curState
 
@@ -798,6 +797,7 @@ Speeds: {curState.xSpeed} {curState.yPos - prevState.yPos}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
 Object type: {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
 Boss: {curState.bossActive} {curState.bossHealth}
+Timer: {self.pyboy.get_memory_value(0xDA00)} {self.pyboy.get_memory_value(0xDA01)} {self.pyboy.get_memory_value(0xDA02)}
 """
         print(s[1:], flush=True)
 
