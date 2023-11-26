@@ -149,18 +149,15 @@ class MarioLandGameState(GameState):
 
         self.bossActive = False
         self.bossHealth = 0
-        if (
-            self.world == (1, 3)
-            and self.pyboy.get_memory_value(BOSS1_TYPE_MEM_VAL) == BOSS1_TYPE
+        if (self.world == (1, 3) and self.levelProgressMax >= 2435) or (
+            self.world == (3, 3) and self.levelProgressMax >= 2450
         ):
             self.bossActive = True
-            self.bossHealth = self.pyboy.get_memory_value(BOSS1_HEALTH_MEM_VAL)
-        elif (
-            self.world == (3, 3)
-            and self.pyboy.get_memory_value(BOSS2_TYPE_MEM_VAL) == BOSS2_TYPE
-        ):
-            self.bossActive = True
-            self.bossHealth = self.pyboy.get_memory_value(BOSS2_HEALTH_MEM_VAL)
+            for i in range(10):
+                addr = 0xD100 | (i * 0x10)
+                objType = self.pyboy.get_memory_value(addr)
+                if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
+                    self.bossHealth = self.pyboy.get_memory_value(addr | 0xC)
 
         powerupStatus = self.pyboy.get_memory_value(POWERUP_STATUS_MEM_VAL)
         hasFireFlower = self.pyboy.get_memory_value(HAS_FIRE_FLOWER_MEM_VAL)
@@ -397,7 +394,7 @@ class MarioLandSettings(EnvSettings):
         self.stateCheckpoint = 0
         self.currentCheckpoint = 0
         self.nextCheckpoint = 0
-        self.levelCheckpoints = {
+        self.levelCheckpointRewards = {
             (1, 1): [950, 1605],
             (1, 2): [1150, 1840],
             (1, 3): [1065, 1927],
@@ -405,6 +402,7 @@ class MarioLandSettings(EnvSettings):
             (2, 2): [870, 1975],
             (3, 1): [2130, 2784],
             (3, 2): [930, 1980],
+            (3, 3): [705, 1775],
             (4, 1): [865, 1970],
             (4, 2): [980, 2150],
         }
@@ -506,7 +504,9 @@ class MarioLandSettings(EnvSettings):
     def _setNextCheckpoint(self, world, currentCheckpoint):
         self.nextCheckpoint = 0
         if currentCheckpoint < 2:
-            self.nextCheckpoint = self.levelCheckpoints[world][self.stateCheckpoint]
+            self.nextCheckpoint = self.levelCheckpointRewards[world][
+                self.stateCheckpoint
+            ]
 
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()
@@ -568,9 +568,14 @@ class MarioLandSettings(EnvSettings):
 
         powerup = self._handlePowerup(prevState, curState)
 
-        # TODO: reward for dealing boss damage or killing it
+        boss = 0
+        if curState.bossActive and curState.bossHealth < prevState.bossHealth:
+            if prevState.bossHealth - curState.bossHealth == 1:
+                boss = 10
+            elif curState.bossHealth == 0:
+                boss = 25
 
-        reward = clock + movement + standingOnBoulder + checkpoint + powerup
+        reward = clock + movement + standingOnBoulder + checkpoint + powerup + boss
 
         return reward, curState
 
@@ -791,7 +796,8 @@ Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM
 X, Y: {curState.xPos}, {curState.yPos}
 Speeds: {curState.xSpeed} {curState.yPos - prevState.yPos}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
-Object type {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
+Object type: {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
+Boss: {curState.bossActive} {curState.bossHealth}
 """
         print(s[1:], flush=True)
 
