@@ -70,6 +70,8 @@ MUSHROOM_REWARD = 20
 FLOWER_REWARD = 20
 STAR_REWARD = 30
 BOULDER_REWARD = 5
+HIT_BOSS_REWARD = 10
+KILL_BOSS_REWARD = 25
 CHECKPOINT_REWARD = 25
 
 # Random env settings
@@ -100,7 +102,6 @@ MOVING_LEFT = 0x20
 OBJ_STAR = 0x34
 BOSS1_TYPE = 8
 BOSS2_TYPE = 50
-
 
 STATUS_SMALL = 0
 STATUS_BIG = 1
@@ -149,6 +150,7 @@ class MarioLandGameState(GameState):
 
         self.bossActive = False
         self.bossHealth = 0
+        # bosses are only active when mario passes a cerain point
         if (self.world == (1, 3) and self.levelProgressMax >= 2435) or (
             self.world == (3, 3) and self.levelProgressMax >= 2450
         ):
@@ -236,7 +238,7 @@ common_blocks = (
 world_1_2_blocks = (20, [*common_blocks, 319])  # 319 is scenery on worlds 3 and 4
 world_3_4_blocks = (20, common_blocks)
 moving_block = (21, [239])
-crush_block = (22, [221, 222, 223])
+crush_blocks = (22, [221, 222, 223])
 falling_block = (23, [238])
 bouncing_boulder_tiles = [194, 195, 210, 211]
 bouncing_boulder = (24, bouncing_boulder_tiles)
@@ -297,7 +299,7 @@ base_tiles = [
     flower,
     star,
     moving_block,
-    crush_block,
+    crush_blocks,
     falling_block,
     pushable_blocks,
     question_block,
@@ -325,6 +327,8 @@ def _buildCompressedTileset(tiles) -> np.ndarray:
     return compressedTileset
 
 
+# different worlds use the same tiles for different things so only load
+# necessary tiles per world
 worldTilesets = {
     1: _buildCompressedTileset(
         [
@@ -544,6 +548,7 @@ class MarioLandSettings(EnvSettings):
         # waiting for them to fall and ride on them instead of immediately
         # jumping into spikes, but only if the boulders are moving to the
         # right
+        # TODO: better moving right detection
         standingOnBoulder = 0
         if curState.world[0] == 3 and movement >= 0 and self._standingOnBoulder():
             standingOnBoulder = BOULDER_REWARD
@@ -570,9 +575,9 @@ class MarioLandSettings(EnvSettings):
         boss = 0
         if curState.bossActive and curState.bossHealth < prevState.bossHealth:
             if prevState.bossHealth - curState.bossHealth == 1:
-                boss = 10
+                boss = HIT_BOSS_REWARD
             elif curState.bossHealth == 0:
-                boss = 25
+                boss = KILL_BOSS_REWARD
 
         reward = clock + movement + standingOnBoulder + checkpoint + powerup + boss
 
@@ -756,6 +761,7 @@ class MarioLandSettings(EnvSettings):
         b = Box(low=0, high=TILES, shape=(size,))
         # add space for powerup status, is invincible, star timer,
         # x and y pos, x and y speed
+        # TODO: add x, y acceleration
         low = np.append(b.low, [0, 0, 0, 0, 0, -2, -4])
         high = np.append(b.high, [3, 1, 1000, 5000, 255, 2, 4])
         return Box(low=low, high=high, dtype=np.int32)
