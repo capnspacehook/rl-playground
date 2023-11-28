@@ -28,7 +28,6 @@ class PyBoyEnv(Env):
         self.isPlaytest = isPlaytest
         self.episodeNum = 0
         self.curInfo = dict()
-        self.agentStats = []
         self.outputDir = outputDir
 
         # build list of possible inputs
@@ -75,23 +74,15 @@ class PyBoyEnv(Env):
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
 
-        self.prevGameState = self.envSettings.reset(options=options)
+        self.prevGameState, envReset = self.envSettings.reset(options=options)
 
-        if not self._started:
-            self._started = True
-        else:
-            # write agent stats to disk
-            # pandas.DataFrame(self.agentStats).to_csv(
-            #     self.outputDir / Path(f"agent_stats_ep{self.episodeNum}.csv.zstd"),
-            #     compression="zstd",
-            #     mode="x",
-            #     index_label="step",
-            # )
-            # self.agentStats = []
+        if envReset:
+            if not self._started:
+                self._started = True
+            else:
+                self.episodeNum += 1
 
-            self.episodeNum += 1
-
-        self.button_is_pressed = {button: False for button in self._buttons}
+            self.button_is_pressed = {button: False for button in self._buttons}
 
         return self.envSettings.observation(self.prevGameState, self.prevGameState), {}
 

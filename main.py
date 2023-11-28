@@ -28,7 +28,7 @@ def vecNormalizePath(checkpointPath: str) -> str:
 def train(args):
     print("Training mode")
 
-    envSettings, _ = createPyboyEnv(args.rom)
+    envSettings, _, orchClass = createPyboyEnv(args.rom)
 
     now = datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     runName = now + "_" + args.algorithm
@@ -41,7 +41,7 @@ def train(args):
 
     def makeEnv(seed: int, rank: int, isEval: bool = False):
         def _init():
-            _, env = createPyboyEnv(
+            _, env, _ = createPyboyEnv(
                 args.rom,
                 args.render,
                 speed=args.emulation_speed,
@@ -68,6 +68,8 @@ def train(args):
     trainingEnv = trainingVec([makeEnv(seed, i) for i in range(numTrainingEnvs)])
     evalEnv = DummyVecEnv([makeEnv(seed, 0, isEval=True)])
 
+    orchestrator = orchClass(trainingEnv)
+
     projectName = gameName.replace("_", " ").title()
 
     config = envSettings.hyperParameters(args.algorithm)
@@ -88,8 +90,9 @@ def train(args):
             sync_tensorboard=True,
         )
 
+    normalizeObs, normalizeRewards = envSettings.normalize()
     if args.model_checkpoint:
-        if envSettings.normalizeObservation():
+        if normalizeObs or normalizeRewards:
             path = vecNormalizePath(args.model_checkpoint)
             trainingEnv = VecNormalize.load(path, trainingEnv)
             evalEnv = VecNormalize.load(path, evalEnv)
@@ -98,9 +101,13 @@ def train(args):
 
         model = args.algo.load(args.model_checkpoint, env=trainingEnv)
     else:
-        if envSettings.normalizeObservation():
-            trainingEnv = VecNormalize(trainingEnv)
-            evalEnv = VecNormalize(evalEnv, training=False, norm_reward=False)
+        if normalizeObs or normalizeRewards:
+            trainingEnv = VecNormalize(
+                trainingEnv, norm_obs=normalizeObs, norm_reward=normalizeRewards
+            )
+            evalEnv = VecNormalize(
+                evalEnv, training=False, norm_obs=normalizeObs, norm_reward=False
+            )
             if "gamma" in config:
                 trainingEnv.gamma = config["gamma"]
                 evalEnv.gamma = config["gamma"]
@@ -117,7 +124,7 @@ def train(args):
         callbacks = [
             RecordAndEvalCallback(
                 evalEnv,
-                envSettings,
+                orchestrator,
                 n_eval_episodes=envSettings.evalEpisodes(),
                 eval_freq=callbackFreq,
                 best_model_save_path=saveDir,
@@ -166,7 +173,7 @@ def train(args):
 def evaluate(args):
     print("Evaluation mode")
 
-    envSettings, env = createPyboyEnv(
+    envSettings, env, _ = createPyboyEnv(
         args.rom, render=args.render, speed=args.emulation_speed, isEval=True
     )
     env = DummyVecEnv([lambda: env])
@@ -199,7 +206,7 @@ def evaluate(args):
 def replay(args):
     print("Replay mode")
 
-    envSettings, env = createPyboyEnv(args.rom, args.render, args.emulation_speed)
+    envSettings, env, _ = createPyboyEnv(args.rom, args.render, args.emulation_speed)
 
     replay = pandas.read_csv(args.replay_episode, compression="zstd")
     for i in range(len(replay["step"])):
@@ -222,7 +229,7 @@ def replay(args):
 def playtest(args):
     print("Playtest mode")
 
-    _, env = createPyboyEnv(
+    _, env, _ = createPyboyEnv(
         args.rom, args.render, args.emulation_speed, isPlaytest=True
     )
     env.reset()

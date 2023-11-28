@@ -11,7 +11,7 @@ from stable_baselines3.common.logger import TensorBoardOutputFormat, Video
 from stable_baselines3.common.vec_env import sync_envs_normalization
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from rl_playground.env_settings.env_settings import EnvSettings
+from rl_playground.env_settings.env_settings import Orchestrator
 
 
 # Copied from rl-zoo3 to avoid dependency
@@ -57,7 +57,7 @@ class RecordAndEvalCallback(BaseCallback):
     def __init__(
         self,
         eval_env: VecEnv,
-        env_settings: EnvSettings,
+        orchestrator: Orchestrator,
         eval_freq: int = 0,
         n_eval_episodes: int = 1,
         best_model_save_path: Optional[Path] = None,
@@ -78,7 +78,7 @@ class RecordAndEvalCallback(BaseCallback):
         super().__init__(verbose)
 
         self.eval_env = eval_env
-        self.env_settings = env_settings
+        self.orchestrator = orchestrator
         self._eval_freq = eval_freq
         self.best_mean_reward = -np.inf
         self.last_mean_reward = -np.inf
@@ -96,10 +96,13 @@ class RecordAndEvalCallback(BaseCallback):
         if self._eval_freq > 0 and self.n_calls % self._eval_freq == 0:
             screens = []
 
-            def grab_screens(_locals: Dict[str, Any], _globals: Dict[str, Any]) -> None:
+            def after_step(_locals: Dict[str, Any], _globals: Dict[str, Any]) -> None:
                 if _locals["done"]:
                     info = _locals["info"]
-                    logEntries = self.env_settings.evalInfoLogEntries(info)
+
+                    self.orchestrator.processEvalInfo(info)
+
+                    logEntries = self.orchestrator.evalInfoLogEntries(info)
                     for entry in logEntries:
                         key, value = entry
                         self.logger.record(
@@ -125,16 +128,17 @@ class RecordAndEvalCallback(BaseCallback):
             # tell the base env that an evaluation is starting
             self.eval_env.set_options({"_eval_starting": True})
             self.eval_env.reset()
-            self.eval_env._reset_options()
 
             episode_rewards, episode_lengths = evaluate_policy(
                 self.model,
                 self.eval_env,
                 n_eval_episodes=self._n_eval_episodes,
                 deterministic=self._deterministic,
-                callback=grab_screens,
+                callback=after_step,
                 return_episode_rewards=True,
             )
+
+            self.orchestrator.postEval()
 
             # Add dimension to array so it's a 5-D array (the video encoder
             # requires this for some reason)

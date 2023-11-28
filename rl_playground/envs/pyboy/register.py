@@ -7,7 +7,10 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 
 from rl_playground.env_settings.metroid2 import Metroid2Settings
-from rl_playground.env_settings.super_mario_land import MarioLandSettings
+from rl_playground.env_settings.super_mario_land import (
+    MarioLandOrchestrator,
+    MarioLandSettings,
+)
 from rl_playground.envs.pyboy.pyboy_env import PyBoyEnv
 from rl_playground.envs.pyboy.wrappers import FrameSkip
 
@@ -39,10 +42,12 @@ def createPyboyEnv(
     pyboy.set_emulation_speed(speed)
 
     envSettings = None
+    orchestrator = None
     if pyboy.cartridge_title() == "METROID2":
         envSettings = Metroid2Settings(pyboy, isEval)
     else:
         envSettings = MarioLandSettings(pyboy, isEval)
+        orchestrator = MarioLandOrchestrator
 
     env = PyBoyEnv(
         pyboy,
@@ -59,4 +64,4 @@ def createPyboyEnv(
 
     # check_env(env)
 
-    return envSettings, env
+    return envSettings, env, orchestrator

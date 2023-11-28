@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Tuple
 
 from gymnasium import Space
+from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
 
 class GameState:
@@ -17,17 +18,17 @@ class EnvSettings:
         """Used to get hyperparameters"""
         return {}
 
-    def normalizeObservation(self) -> bool:
-        """Whether observations should be normalized or not"""
-        return True
+    def normalize(self) -> (bool, bool):
+        """Whether observations and rewards should be normalized or not"""
+        return True, True
 
     def evalEpisodes(self) -> int:
         """Number of evaluation episodes that should be preformed"""
         return 1
 
-    def reset(self, options: dict[str, Any] | None = None) -> GameState:
+    def reset(self, options: dict[str, Any] | None = None) -> (GameState, bool):
         """Reset state when starting a new training run"""
-        pass
+        raise Exception("reset not implemented!")
 
     def actionSpace(self) -> (List[Any], Space):
         """Get action space for AI"""
@@ -51,9 +52,6 @@ class EnvSettings:
     def info(self, gameState: GameState) -> dict[str, Any]:
         return {}
 
-    def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
-        return ()
-
     def terminated(self, prevState: GameState, curState: GameState) -> bool:
         """Returns true if the game should end, ie game over"""
         return False
@@ -69,3 +67,18 @@ class EnvSettings:
 
     def render(self):
         pass
+
+
+class Orchestrator:
+    def __init__(self, env: VecEnv) -> None:
+        self.env = env
+        self.n_called = 0
+
+    def processEvalInfo(self, info: Dict[str, Any]):
+        pass
+
+    def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
+        return ()
+
+    def postEval(self):
+        self.n_called += 1

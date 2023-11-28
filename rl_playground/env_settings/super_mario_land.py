@@ -1,3 +1,4 @@
+from collections import deque
 from typing import Any, Callable, Dict, List, Tuple, Union
 from os import listdir
 from os.path import basename, isfile, join, splitext
@@ -9,8 +10,9 @@ import flax.linen as nn
 from gymnasium.spaces import Box, Discrete, Space
 from pyboy import PyBoy, WindowEvent
 from pyboy.botsupport.constants import TILES
+from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from rl_playground.env_settings.env_settings import EnvSettings, GameState
+from rl_playground.env_settings.env_settings import EnvSettings, GameState, Orchestrator
 
 
 qrdqnConfig = {
@@ -64,6 +66,9 @@ ppoConfig = {
 # Reward values
 DEATH_PUNISHMENT = -25
 HIT_PUNISHMENT = -5
+# TODO: linearly increase to encourage progress over speed
+# earlier, then after game mechanics and levels are learned
+# encourage speed more
 CLOCK_PUNISHMENT = -0.1
 MOVEMENT_REWARD_COEF = 1
 MUSHROOM_REWARD = 20
@@ -77,6 +82,14 @@ CHECKPOINT_REWARD = 25
 # Random env settings
 RANDOM_NOOP_FRAMES = 60
 RANDOM_POWERUP_CHANCE = 25
+
+# Training level selection settings
+N_WARMUP_EVALS = 10
+EVAL_WINDOW = 15
+STD_COEF = 1.5
+# probabilities before normalization
+MIN_PROB = 0.01
+MAX_PROB = 1.0
 
 # Game area dimensions
 GAME_AREA_HEIGHT = 16
@@ -398,6 +411,7 @@ class MarioLandSettings(EnvSettings):
         self.stateCheckpoint = 0
         self.currentCheckpoint = 0
         self.nextCheckpoint = 0
+        # TODO: number of checkpoints should be able to differ between levels
         self.levelCheckpointRewards = {
             (1, 1): [950, 1605],
             (1, 2): [1150, 1840],
@@ -411,15 +425,28 @@ class MarioLandSettings(EnvSettings):
             (4, 2): [980, 2150],
         }
 
+        chooseProb = len(self.levelCheckpointRewards) / 100.0
+        # all levels are equally likely to be trained on at the start
+        self.levelChooseProbs = [
+            chooseProb for _ in range(len(self.levelCheckpointRewards))
+        ]
+
         # so level progress max will be set
         self.gameWrapper.start_game()
 
-    def reset(self, options: dict[str, Any] | None = None) -> MarioLandGameState:
-        # this will be passed before evals are started, reset the eval
-        # state counter so all evals will start at the same state
-        if options is not None and options["_eval_starting"]:
-            self.evalStateCounter = 0
-            return self.gameState()
+    def reset(
+        self, options: dict[str, Any] | None = None
+    ) -> (MarioLandGameState, bool):
+        if options is not None:
+            if "_eval_starting" in options:
+                # this will be passed before evals are started, reset the eval
+                # state counter so all evals will start at the same state
+                self.evalStateCounter = 0
+            elif "_update_level_choose_probs" in options:
+                # an eval has ended, update the level choose probabilities
+                self.levelChooseProbs = options["_update_level_choose_probs"]
+
+            return self.gameState(), False
 
         if self.isEval:
             # evaluate levels in order
@@ -430,9 +457,11 @@ class MarioLandSettings(EnvSettings):
                 self.evalStateCounter = 0
         else:
             # reset game state to a random level
-            self.stateIdx = random.randint(0, len(self.stateFiles) - 1)
+            level = np.random.choice(10, p=self.levelChooseProbs)
+            checkpoint = np.random.randint(3)
+            self.stateIdx = (3 * level) + checkpoint
 
-        return self._loadLevel()
+        return self._loadLevel(), True
 
     def _loadLevel(self) -> MarioLandGameState:
         stateFile = self.stateFiles[self.stateIdx]
@@ -787,10 +816,6 @@ class MarioLandSettings(EnvSettings):
             "levelProgress": curState.levelProgressMax,
         }
 
-    def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
-        world, level = info["worldLevel"]
-        return [(f"{world}-{level}_progress", info["levelProgress"])]
-
     def printGameState(
         self, prevState: MarioLandGameState, curState: MarioLandGameState
     ):
@@ -809,3 +834,104 @@ Timer: {self.pyboy.get_memory_value(0xDA00)} {self.pyboy.get_memory_value(0xDA01
 
     def render(self):
         return self.pyboy.screen_image()
+
+
+levelsToIdxes = {
+    (1, 1): 0,
+    (1, 2): 1,
+    (1, 3): 2,
+    (2, 1): 3,
+    (2, 2): 4,
+    (3, 1): 5,
+    (3, 2): 6,
+    (3, 3): 7,
+    (4, 1): 8,
+    (4, 2): 9,
+}
+
+levelEndPositions = [
+    2600,
+    2440,
+    2588,
+    2760,
+    2440,
+    3880,
+    2760,
+    2588,
+    3880,
+    3400,
+]
+
+
+class MarioLandOrchestrator(Orchestrator):
+    def __init__(self, env: VecEnv) -> None:
+        self.levelProgress = [None] * len(levelEndPositions)
+
+        self.warmup = N_WARMUP_EVALS
+        self.window = EVAL_WINDOW
+        self.stdCoef = STD_COEF
+        self.minProb = MIN_PROB
+        self.maxProb = MAX_PROB
+
+        super().__init__(env)
+
+    def processEvalInfo(self, info: Dict[str, Any]):
+        level = info["worldLevel"]
+        progress = info["levelProgress"]
+        idx = levelsToIdxes[level]
+        if self.levelProgress[idx] is not None:
+            self.levelProgress[idx].addProgress(progress)
+        else:
+            self.levelProgress[idx] = LevelProgress(self.window, progress)
+
+    def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
+        world, level = info["worldLevel"]
+        return [(f"{world}-{level}_progress", info["levelProgress"])]
+
+    def postEval(self):
+        if self.n_called >= self.warmup:
+            probs = [0] * len(levelEndPositions)
+            for idx, progress in enumerate(self.levelProgress):
+                if progress == None:
+                    continue
+
+                p = progress.average
+                if progress.stdDeviation > 0.0:
+                    p -= progress.stdDeviation / self.stdCoef
+
+                consistentProgress = 0.0
+                if p != 0.0:
+                    consistentProgress = p / levelEndPositions[idx]
+                    consistentProgress = 1 - np.clip(
+                        consistentProgress, self.minProb, self.maxProb
+                    )
+                    print(f"{idx}: {consistentProgress}")
+
+                probs[idx] = consistentProgress
+
+            # normalize probabilities
+            totalProb = sum(probs)
+            probs = [prob / totalProb for prob in probs]
+            print(probs)
+
+            options = {"_update_level_choose_probs": probs}
+            self.env.set_options(options)
+            self.env.reset()
+
+        super().postEval()
+
+
+class LevelProgress:
+    def __init__(self, window: int, progress: int) -> None:
+        self.window = window
+
+        self.progresses = deque([progress])
+        self.average = float(progress)
+        self.stdDeviation = 0.0
+
+    def addProgress(self, progress: int):
+        self.progresses.append(progress)
+        if len(self.progresses) > self.window:
+            self.progresses.popleft()
+        self.average = np.mean(self.progresses)
+        self.stdDeviation = np.std(self.progresses)
