@@ -15,6 +15,35 @@ from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 from rl_playground.env_settings.env_settings import EnvSettings, GameState, Orchestrator
 
 
+# Reward values
+DEATH_PUNISHMENT = -25
+HIT_PUNISHMENT = -5
+# TODO: linearly increase to encourage progress over speed
+# earlier, then after game mechanics and levels are learned
+# encourage speed more
+CLOCK_PUNISHMENT = -0.01
+MOVEMENT_REWARD_COEF = 1
+MUSHROOM_REWARD = 20
+FLOWER_REWARD = 20
+STAR_REWARD = 30
+MOVING_PLATFORM_REWARD = 7.5
+BOULDER_REWARD = 3
+HIT_BOSS_REWARD = 10
+KILL_BOSS_REWARD = 25
+CHECKPOINT_REWARD = 25
+
+# Random env settings
+RANDOM_NOOP_FRAMES = 60
+RANDOM_POWERUP_CHANCE = 25
+
+# Training level selection settings
+N_WARMUP_EVALS = 10
+EVAL_WINDOW = 15
+STD_COEF = 1.5
+# probabilities before normalization
+MIN_PROB = 0.01
+MAX_PROB = 1.0
+
 qrdqnConfig = {
     "policy": "MlpPolicy",
     "batch_size": 100,
@@ -63,56 +92,27 @@ ppoConfig = {
     ),
 }
 
-# Reward values
-DEATH_PUNISHMENT = -25
-HIT_PUNISHMENT = -5
-# TODO: linearly increase to encourage progress over speed
-# earlier, then after game mechanics and levels are learned
-# encourage speed more
-CLOCK_PUNISHMENT = -0.1
-MOVEMENT_REWARD_COEF = 1
-MUSHROOM_REWARD = 20
-FLOWER_REWARD = 20
-STAR_REWARD = 30
-BOULDER_REWARD = 5
-HIT_BOSS_REWARD = 10
-KILL_BOSS_REWARD = 25
-CHECKPOINT_REWARD = 25
-
-# Random env settings
-RANDOM_NOOP_FRAMES = 60
-RANDOM_POWERUP_CHANCE = 25
-
-# Training level selection settings
-N_WARMUP_EVALS = 10
-EVAL_WINDOW = 15
-STD_COEF = 1.5
-# probabilities before normalization
-MIN_PROB = 0.01
-MAX_PROB = 1.0
 
 # Game area dimensions
 GAME_AREA_HEIGHT = 16
 GAME_AREA_WIDTH = 20
 
 # Memory constants
-DOUBLE_X_SPEED_MEM_VAL = 0xC20E
 MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
+MARIO_X_POS_MEM_VAL = 0xC202
 MARIO_Y_POS_MEM_VAL = 0xC201
 STATUS_TIMER_MEM_VAL = 0xFFA6
 DEAD_JUMP_TIMER_MEM_VAL = 0xC0AC
+MARIO_ON_GROUND_MEM_VAL = 0xC20A
 POWERUP_STATUS_MEM_VAL = 0xFF99
 HAS_FIRE_FLOWER_MEM_VAL = 0xFFB5
 STAR_TIMER_MEM_VAL = 0xC0D3
 FRAME_COUNTER_MEM_VAL = 0xDA00
 PROCESSING_OBJECT_MEM_VAL = 0xFFFB
-BOSS1_TYPE_MEM_VAL = 0xD120
-BOSS1_HEALTH_MEM_VAL = 0xD12C
-BOSS2_TYPE_MEM_VAL = 0xD100
-BOSS2_HEALTH_MEM_VAL = 0xD10C
+OBJECTS_START_MEM_VAL = 0xD100
 
 MOVING_LEFT = 0x20
-OBJ_STAR = 0x34
+OBJ_TYPE_STAR = 0x34
 BOSS1_TYPE = 8
 BOSS2_TYPE = 50
 
@@ -125,6 +125,8 @@ TIMER_LEVEL_CLEAR = 0xF0
 STAR_TIME = 956
 SHRINK_TIME = 0x50 + 0x40
 
+OBJ_TYPES_MOVING_PLATFORM = (10, 11, 56, 57, 58, 59)
+
 
 class MarioLandGameState(GameState):
     def __init__(self, pyboy: PyBoy):
@@ -134,45 +136,41 @@ class MarioLandGameState(GameState):
         # Find the real level progress x
         levelBlock = pyboy.get_memory_value(0xC0AB)
         # C202 Mario's X position relative to the screen
-        xPos = pyboy.get_memory_value(0xC202)
+        self.relXPos = pyboy.get_memory_value(MARIO_X_POS_MEM_VAL)
         scx = pyboy.botsupport_manager().screen().tilemap_position_list()[16][0]
         real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
-        self.xPos = levelBlock * 16 + real + xPos
+        self.xPos = levelBlock * 16 + real + self.relXPos
 
-        self.xSpeed = self.pyboy.get_memory_value(DOUBLE_X_SPEED_MEM_VAL)
-        if self.xSpeed != 0:
-            self.xSpeed = int(self.xSpeed // 2)
-            if (
-                self.pyboy.get_memory_value(MARIO_MOVING_DIRECTION_MEM_VAL)
-                == MOVING_LEFT
-            ):
-                self.xSpeed = -self.xSpeed
-
-        yPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
+        self.relYPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
         # 185 is lowest y pos before mario is dead, y coordinate is flipped, 0 is higher than 1
-        if yPos <= 185:
-            self.yPos = 185 - yPos
+        if self.relYPos <= 185:
+            self.yPos = 185 - self.relYPos
         else:
             # handle underflow
-            self.yPos = 185 + (256 - yPos)
+            self.yPos = 185 + (256 - self.relYPos)
 
         self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
         self.world = self.gameWrapper.world
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
         self.deadJumpTimer = self.pyboy.get_memory_value(DEAD_JUMP_TIMER_MEM_VAL)
+        self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
+        self.movingPlatformObj = None
 
+        self.objects = []
         self.bossActive = False
         self.bossHealth = 0
-        # bosses are only active when mario passes a cerain point
-        if (self.world == (1, 3) and self.levelProgressMax >= 2435) or (
-            self.world == (3, 3) and self.levelProgressMax >= 2450
-        ):
-            self.bossActive = True
-            for i in range(10):
-                addr = 0xD100 | (i * 0x10)
-                objType = self.pyboy.get_memory_value(addr)
-                if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
-                    self.bossHealth = self.pyboy.get_memory_value(addr | 0xC)
+        for i in range(10):
+            addr = OBJECTS_START_MEM_VAL | (i * 0x10)
+            objType = self.pyboy.get_memory_value(addr)
+            if objType == 255:
+                continue
+            relXPos = self.pyboy.get_memory_value(addr + 0x3)
+            relYPos = self.pyboy.get_memory_value(addr + 0x2)
+            self.objects.append(MarioLandObject(i, objType, relXPos, relYPos))
+
+            if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
+                self.bossActive = True
+                self.bossHealth = self.pyboy.get_memory_value(addr | 0xC)
 
         powerupStatus = self.pyboy.get_memory_value(POWERUP_STATUS_MEM_VAL)
         hasFireFlower = self.pyboy.get_memory_value(HAS_FIRE_FLOWER_MEM_VAL)
@@ -186,7 +184,7 @@ class MarioLandGameState(GameState):
         if starTimer != 0:
             self.hasStar = True
             self.isInvincible = True
-            if self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL) == OBJ_STAR:
+            if self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL) == OBJ_TYPE_STAR:
                 self.gotStar = True
         elif powerupStatus == 1:
             self.powerupStatus = STATUS_BIG
@@ -197,6 +195,14 @@ class MarioLandGameState(GameState):
                 self.powerupStatus = STATUS_BIG
         if powerupStatus == 3 or powerupStatus == 4:
             self.isInvincible = True
+
+
+class MarioLandObject:
+    def __init__(self, index, typeID, x, y) -> None:
+        self.index = index
+        self.typeID = typeID
+        self.relXPos = x
+        self.relYPos = y
 
 
 # Mario and Daisy
@@ -431,6 +437,9 @@ class MarioLandSettings(EnvSettings):
             chooseProb for _ in range(len(self.levelCheckpointRewards))
         ]
 
+        self.onGroundFor = 0
+        self.movingPlatformJumpState = None
+
         # so level progress max will be set
         self.gameWrapper.start_game()
 
@@ -447,6 +456,9 @@ class MarioLandSettings(EnvSettings):
                 self.levelChooseProbs = options["_update_level_choose_probs"]
 
             return self.gameState(), False
+
+        self.onGroundFor = 0
+        self.movingPlatformJumpState = None
 
         if self.isEval:
             # evaluate levels in order
@@ -573,13 +585,29 @@ class MarioLandSettings(EnvSettings):
         clock = CLOCK_PUNISHMENT
         movement = (curState.xPos - prevState.xPos) * MOVEMENT_REWARD_COEF
 
+        # the game registers mario as on the ground 1 or 2 frames before
+        # he actually is to change his pose
+        if not curState.onGround:
+            self.onGroundFor = 0
+        elif self.onGroundFor < 2:
+            self.onGroundFor += 1
+        onGround = self.onGroundFor == 2
+
+        # reward jumping from moving platform to another block mario
+        # can stand on, but don't reward jumping on the same moving platform
+        movingPlatform = self._handleMovingPlatform(onGround, prevState, curState)
+
         # in world 3 reward standing on bouncing boulders to encourage
         # waiting for them to fall and ride on them instead of immediately
         # jumping into spikes, but only if the boulders are moving to the
         # right
-        # TODO: better moving right detection
         standingOnBoulder = 0
-        if curState.world[0] == 3 and movement >= 0 and self._standingOnBoulder():
+        if (
+            curState.world[0] == 3
+            and onGround
+            and movement > 0
+            and self._standingOnTiles(bouncing_boulder_tiles)
+        ):
             standingOnBoulder = BOULDER_REWARD
 
         # reward for passing checkpoints
@@ -608,40 +636,117 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = clock + movement + standingOnBoulder + checkpoint + powerup + boss
+        reward = (
+            clock
+            + movement
+            + movingPlatform
+            + standingOnBoulder
+            + checkpoint
+            + powerup
+            + boss
+        )
 
         return reward, curState
 
-    def _standingOnBoulder(self) -> bool:
-        boulderSprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(
-            bouncing_boulder_tiles, on_screen=True
-        )
-        if len(boulderSprites) != 0:
-            leftMarioLeg = self.pyboy.botsupport_manager().sprite(5)
-            leftMarioLegXPos = leftMarioLeg.x
-            rightMarioLegXPos = leftMarioLegXPos + 8
-            marioLegsYPos = leftMarioLeg.y
-            if leftMarioLeg.attr_x_flip:
-                rightMarioLegXPos = leftMarioLegXPos
-                leftMarioLegXPos -= 8
+    def _handleMovingPlatform(
+        self,
+        onGround: bool,
+        prevState: MarioLandGameState,
+        curState: MarioLandGameState,
+    ) -> float:
+        if onGround and self.movingPlatformJumpState != None:
+            jumpPlatformObj = self.movingPlatformJumpState.movingPlatformObj
+            landPlatformObj, onMovingPlatform = self._standingOnMovingPlatform(curState)
+            jumpPlatformWidth = 30
+            if jumpPlatformObj.typeID in (58, 59):
+                jumpPlatformWidth = 20
 
-            for boulderSpriteIdxs in boulderSprites:
-                for boulderSpriteIdx in boulderSpriteIdxs:
-                    boulderSprite = self.pyboy.botsupport_manager().sprite(
-                        boulderSpriteIdx
+            # only reward landing from a moving platform if mario made
+            # forward progress to prevent rewarding from jumping backwards
+            # or continually jumping from the same platform
+            if (
+                curState.levelProgressMax
+                > self.movingPlatformJumpState.levelProgressMax
+            ):
+                # Only reward jumping from a moving platform and landing
+                # on one if it's a different one, or more than 30 units
+                # were traveled. If mario jumps fast enough the platform
+                # he jumped off of may go off screen and be removed from
+                # the object list, and if he lands on a platform of the
+                # same type it'll have the same object index and type.
+                # In this case ensure more distance has been traveled than
+                # the width of the platform.
+                if onMovingPlatform and (
+                    (
+                        jumpPlatformObj.index != landPlatformObj.index
+                        or jumpPlatformObj.typeID != landPlatformObj.typeID
                     )
-                    # y positions are inverted for some reason
-                    if marioLegsYPos + 8 == boulderSprite.y and (
-                        (
-                            leftMarioLegXPos >= boulderSprite.x - 4
-                            and leftMarioLegXPos <= boulderSprite.x + 4
-                        )
-                        or (
-                            rightMarioLegXPos >= boulderSprite.x - 4
-                            and rightMarioLegXPos <= boulderSprite.x + 4
-                        )
-                    ):
-                        return True
+                    or curState.xPos - self.movingPlatformJumpState.xPos
+                    > jumpPlatformWidth
+                ):
+                    self.movingPlatformJumpState = None
+                    return MOVING_PLATFORM_REWARD
+                # reward landing on ground
+                elif not onMovingPlatform:
+                    self.movingPlatformJumpState = None
+                    return MOVING_PLATFORM_REWARD
+        elif onGround and self.movingPlatformJumpState == None:
+            platformObj, onMovingPlatform = self._standingOnMovingPlatform(curState)
+            if onMovingPlatform:
+                curState.movingPlatformObj = platformObj
+        elif (
+            not curState.onGround
+            and self.movingPlatformJumpState is None
+            and prevState.movingPlatformObj is not None
+        ):
+            self.movingPlatformJumpState = curState
+            self.movingPlatformJumpState.movingPlatformObj = prevState.movingPlatformObj
+
+        return 0
+
+    def _standingOnMovingPlatform(
+        self, curState: MarioLandGameState
+    ) -> (MarioLandObject | None, bool):
+        for o in curState.objects:
+            if (
+                o.typeID in OBJ_TYPES_MOVING_PLATFORM
+                and curState.relYPos + 10 == o.relYPos
+            ):
+                return o, True
+        return None, False
+
+    def _standingOnTiles(self, tiles: List[int]) -> bool:
+        sprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(
+            tiles, on_screen=True
+        )
+        if len(sprites) == 0:
+            return False
+
+        leftMarioLeg = self.pyboy.botsupport_manager().sprite(5)
+        leftMarioLegXPos = leftMarioLeg.x
+        rightMarioLegXPos = leftMarioLegXPos + 8
+        marioLegsYPos = leftMarioLeg.y
+        if leftMarioLeg.attr_x_flip:
+            rightMarioLegXPos = leftMarioLegXPos
+            leftMarioLegXPos -= 8
+
+        for spriteIdxs in sprites:
+            for spriteIdx in spriteIdxs:
+                sprite = self.pyboy.botsupport_manager().sprite(spriteIdx)
+                # y positions are inverted for some reason
+                if (
+                    marioLegsYPos + 6 <= sprite.y and marioLegsYPos + 10 >= sprite.y
+                ) and (
+                    (
+                        leftMarioLegXPos >= sprite.x - 4
+                        and leftMarioLegXPos <= sprite.x + 4
+                    )
+                    or (
+                        rightMarioLegXPos >= sprite.x - 4
+                        and rightMarioLegXPos <= sprite.x + 4
+                    )
+                ):
+                    return True
 
         return False
 
@@ -712,7 +817,7 @@ class MarioLandSettings(EnvSettings):
                 curState.invincibleTimer,
                 curState.xPos,
                 curState.yPos,
-                curState.xSpeed,
+                curState.xPos - prevState.xPos,
                 curState.yPos - prevState.yPos,
             ],
         )
@@ -819,16 +924,22 @@ class MarioLandSettings(EnvSettings):
     def printGameState(
         self, prevState: MarioLandGameState, curState: MarioLandGameState
     ):
+        objects = ""
+        for i, o in enumerate(curState.objects):
+            objects += f"{i}: {o.typeID} {o.relXPos} {o.relYPos}\n"
+
         s = f"""
 Max level progress: {curState.levelProgressMax}
 Powerup: {curState.powerupStatus}
 Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
 X, Y: {curState.xPos}, {curState.yPos}
-Speeds: {curState.xSpeed} {curState.yPos - prevState.yPos}
+Rel X, Y {curState.relXPos} {curState.relYPos}
+Speeds: {curState.xPos - prevState.xPos} {curState.yPos - prevState.yPos}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
 Object type: {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
 Boss: {curState.bossActive} {curState.bossHealth}
-Timer: {self.pyboy.get_memory_value(0xDA00)} {self.pyboy.get_memory_value(0xDA01)} {self.pyboy.get_memory_value(0xDA02)}
+Moving platform: {curState.movingPlatformObj is not None}
+{objects}
 """
         print(s[1:], flush=True)
 
