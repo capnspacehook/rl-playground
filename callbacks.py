@@ -60,8 +60,8 @@ class RecordAndEvalCallback(BaseCallback):
         orchestrator: Orchestrator,
         eval_freq: int = 0,
         n_eval_episodes: int = 1,
-        best_model_save_path: Optional[Path] = None,
-        best_model_save_prefix: str = "rl_model",
+        model_save_path: Optional[Path] = None,
+        model_save_prefix: str = "rl_model",
         save_vecnormalize: bool = False,
         save_replay_buffer: bool = False,
         deterministic: bool = True,
@@ -87,9 +87,12 @@ class RecordAndEvalCallback(BaseCallback):
         self.save_replay_buffer = save_replay_buffer
         self._deterministic = deterministic
 
-        if best_model_save_path is not None:
+        if model_save_path is not None:
+            self.latest_model_save_path = str(
+                model_save_path / f"{model_save_prefix}_latest"
+            )
             self.best_model_save_path = str(
-                best_model_save_path / best_model_save_prefix
+                model_save_path / f"{model_save_prefix}_best"
             )
 
     def _on_step(self) -> bool:
@@ -170,6 +173,14 @@ class RecordAndEvalCallback(BaseCallback):
                 "time/total_timesteps", self.num_timesteps, exclude="tensorboard"
             )
             self.logger.dump(self.num_timesteps)
+
+            if self.latest_model_save_path is not None:
+                saveModel(
+                    self.model,
+                    self.latest_model_save_path,
+                    self.save_replay_buffer,
+                    self.save_vecnormalize,
+                )
 
             if mean_reward > self.best_mean_reward:
                 if self.verbose >= 1:
