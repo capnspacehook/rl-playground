@@ -9,8 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas
 
-# from sb3_contrib import QRDQN
-from sbx import PPO
+from stable_baselines3 import PPO
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 from wandb.integration.sb3 import WandbCallback
@@ -375,8 +374,6 @@ if __name__ == "__main__":
                 if args.save_replay_buffers:
                     print("PPO doesn't have a replay buffer")
                     exit(1)
-            case "qrdqn":
-                args.algo = QRDQN
             case _:
                 print(f"invalid algorithm {args.algorithm}")
                 exit(1)

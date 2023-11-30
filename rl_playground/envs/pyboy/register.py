@@ -6,10 +6,10 @@ from pyboy import PyBoy
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 
-from rl_playground.env_settings.metroid2 import Metroid2Settings
-from rl_playground.env_settings.super_mario_land import (
+from rl_playground.env_settings.metroid2.metroid2 import Metroid2Settings
+from rl_playground.env_settings.super_mario_land.env_settings import MarioLandSettings
+from rl_playground.env_settings.super_mario_land.orchestrator import (
     MarioLandOrchestrator,
-    MarioLandSettings,
 )
 from rl_playground.envs.pyboy.pyboy_env import PyBoyEnv
 from rl_playground.envs.pyboy.wrappers import FrameSkip

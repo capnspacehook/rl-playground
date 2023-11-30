@@ -179,24 +179,13 @@ def sample_ppo_params(trial: optuna.Trial, numTrainingEnvs: int) -> Dict[str, An
 
 
 def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
-    """
-    Linear learning rate schedule.
-
-    :param initial_value: (float or str)
-    :return: (function)
-    """
     # Force conversion to float
-    initial_value_ = float(initial_value)
+    _initial_value = float(initial_value)
 
-    def func(progress_remaining: float) -> float:
-        """
-        Progress will decrease from 1 (beginning) to 0
-        :param progress_remaining: (float)
-        :return: (float)
-        """
-        return progress_remaining * initial_value_
+    def _schedule(progress_remaining: float) -> float:
+        return progress_remaining * _initial_value
 
-    return func
+    return _schedule
 
 
 class SlowTrialPruner(BasePruner):

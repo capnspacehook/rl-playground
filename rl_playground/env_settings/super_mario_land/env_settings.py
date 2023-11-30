@@ -1,18 +1,21 @@
-from collections import deque
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Union
 from os import listdir
 from os.path import basename, isfile, join, splitext
 import random
 from pathlib import Path
 
 import numpy as np
-import flax.linen as nn
+import torch.nn as nn
 from gymnasium.spaces import Box, Discrete, Space
 from pyboy import PyBoy, WindowEvent
 from pyboy.botsupport.constants import TILES
-from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
-from rl_playground.env_settings.env_settings import EnvSettings, GameState, Orchestrator
+from rl_playground.env_settings.env_settings import EnvSettings
+from rl_playground.env_settings.super_mario_land.game_area import (
+    bouncing_boulder_tiles,
+    worldTilesets,
+)
+from rl_playground.env_settings.super_mario_land.ram import *
 
 
 # Reward values
@@ -36,33 +39,6 @@ CHECKPOINT_REWARD = 25
 RANDOM_NOOP_FRAMES = 60
 RANDOM_POWERUP_CHANCE = 25
 
-# Training level selection settings
-N_WARMUP_EVALS = 10
-EVAL_WINDOW = 15
-STD_COEF = 1.5
-# probabilities before normalization
-MIN_PROB = 0.01
-MAX_PROB = 1.0
-
-qrdqnConfig = {
-    "policy": "MlpPolicy",
-    "batch_size": 100,
-    "buffer_size": 100000,
-    "exploration_final_eps": 0.010561494547433554,
-    "exploration_fraction": 0.1724714484114384,
-    "gamma": 0.95,
-    "gradient_steps": -1,
-    "learning_rate": 1.7881224306668102e-05,
-    "learning_starts": 10000,
-    "target_update_interval": 20000,
-    "train_freq": 256,
-    "tau": 1.0,
-    "policy_kwargs": {
-        "net_arch": [256, 256],
-        "n_quantiles": 166,
-    },
-}
-
 
 def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
     # Force conversion to float
@@ -76,7 +52,7 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
 
 ppoConfig = {
     "policy": "MlpPolicy",
-    "batch_size": 512,  # Try 256
+    "batch_size": 512,
     "clip_range": 0.2,
     "ent_coef": 9.513020308749457e-06,
     "gae_lambda": 0.98,
@@ -87,7 +63,7 @@ ppoConfig = {
     "n_steps": 512,
     "vf_coef": 0.33653746631712467,
     "policy_kwargs": dict(
-        activation_fn=nn.relu,
+        activation_fn=nn.ReLU,
         net_arch=dict(pi=[256, 256], vf=[256, 256]),
     ),
 }
@@ -96,302 +72,6 @@ ppoConfig = {
 # Game area dimensions
 GAME_AREA_HEIGHT = 16
 GAME_AREA_WIDTH = 20
-
-# Memory constants
-MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
-MARIO_X_POS_MEM_VAL = 0xC202
-MARIO_Y_POS_MEM_VAL = 0xC201
-STATUS_TIMER_MEM_VAL = 0xFFA6
-DEAD_JUMP_TIMER_MEM_VAL = 0xC0AC
-MARIO_ON_GROUND_MEM_VAL = 0xC20A
-POWERUP_STATUS_MEM_VAL = 0xFF99
-HAS_FIRE_FLOWER_MEM_VAL = 0xFFB5
-STAR_TIMER_MEM_VAL = 0xC0D3
-FRAME_COUNTER_MEM_VAL = 0xDA00
-PROCESSING_OBJECT_MEM_VAL = 0xFFFB
-OBJECTS_START_MEM_VAL = 0xD100
-
-MOVING_LEFT = 0x20
-OBJ_TYPE_STAR = 0x34
-BOSS1_TYPE = 8
-BOSS2_TYPE = 50
-
-STATUS_SMALL = 0
-STATUS_BIG = 1
-STATUS_FIRE = 2
-
-TIMER_DEATH = 0x90
-TIMER_LEVEL_CLEAR = 0xF0
-STAR_TIME = 956
-SHRINK_TIME = 0x50 + 0x40
-
-OBJ_TYPES_MOVING_PLATFORM = (10, 11, 56, 57, 58, 59)
-
-
-class MarioLandGameState(GameState):
-    def __init__(self, pyboy: PyBoy):
-        self.pyboy = pyboy
-        self.gameWrapper = pyboy.game_wrapper()
-
-        # Find the real level progress x
-        levelBlock = pyboy.get_memory_value(0xC0AB)
-        # C202 Mario's X position relative to the screen
-        self.relXPos = pyboy.get_memory_value(MARIO_X_POS_MEM_VAL)
-        scx = pyboy.botsupport_manager().screen().tilemap_position_list()[16][0]
-        real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
-        self.xPos = levelBlock * 16 + real + self.relXPos
-
-        self.relYPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
-        # 185 is lowest y pos before mario is dead, y coordinate is flipped, 0 is higher than 1
-        if self.relYPos <= 185:
-            self.yPos = 185 - self.relYPos
-        else:
-            # handle underflow
-            self.yPos = 185 + (256 - self.relYPos)
-
-        self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
-        self.world = self.gameWrapper.world
-        self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
-        self.deadJumpTimer = self.pyboy.get_memory_value(DEAD_JUMP_TIMER_MEM_VAL)
-        self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
-        self.movingPlatformObj = None
-
-        self.objects = []
-        self.bossActive = False
-        self.bossHealth = 0
-        for i in range(10):
-            addr = OBJECTS_START_MEM_VAL | (i * 0x10)
-            objType = self.pyboy.get_memory_value(addr)
-            if objType == 255:
-                continue
-            relXPos = self.pyboy.get_memory_value(addr + 0x3)
-            relYPos = self.pyboy.get_memory_value(addr + 0x2)
-            self.objects.append(MarioLandObject(i, objType, relXPos, relYPos))
-
-            if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
-                self.bossActive = True
-                self.bossHealth = self.pyboy.get_memory_value(addr | 0xC)
-
-        powerupStatus = self.pyboy.get_memory_value(POWERUP_STATUS_MEM_VAL)
-        hasFireFlower = self.pyboy.get_memory_value(HAS_FIRE_FLOWER_MEM_VAL)
-        starTimer = self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)
-
-        self.powerupStatus = STATUS_SMALL
-        self.gotStar = False
-        self.hasStar = False
-        self.isInvincible = False
-        self.invincibleTimer = 0
-        if starTimer != 0:
-            self.hasStar = True
-            self.isInvincible = True
-            if self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL) == OBJ_TYPE_STAR:
-                self.gotStar = True
-        elif powerupStatus == 1:
-            self.powerupStatus = STATUS_BIG
-        elif powerupStatus == 2:
-            if hasFireFlower:
-                self.powerupStatus = STATUS_FIRE
-            else:
-                self.powerupStatus = STATUS_BIG
-        if powerupStatus == 3 or powerupStatus == 4:
-            self.isInvincible = True
-
-
-class MarioLandObject:
-    def __init__(self, index, typeID, x, y) -> None:
-        self.index = index
-        self.typeID = typeID
-        self.relXPos = x
-        self.relYPos = y
-
-
-# Mario and Daisy
-base_scripts = (1, list(range(81)))
-plane = (2, list(range(99, 110)))
-submarine = (3, list(range(112, 122)))
-mario_fireball = (4, [96, 110, 122])
-
-# Bonuses
-coin = (10, [244])
-mushroom = (11, [131])
-flower = (12, [224, 229])
-star = (13, [134])
-heart = (14, [132])
-
-# Blocks
-pipes = list(range(368, 381))
-world_4_extra_pipes = [363, 364, 365, 366]  # are normal blocks on other worlds
-common_blocks = (
-    [
-        142,
-        143,
-        230,  # lift block
-        231,
-        232,
-        233,
-        234,
-        235,
-        236,
-        301,
-        302,
-        303,
-        304,
-        340,
-        352,
-        353,
-        355,
-        356,
-        357,
-        358,
-        359,
-        360,
-        361,
-        362,
-        381,
-        382,
-        383,
-    ]
-    + pipes
-    + world_4_extra_pipes,
-)
-world_1_2_blocks = (20, [*common_blocks, 319])  # 319 is scenery on worlds 3 and 4
-world_3_4_blocks = (20, common_blocks)
-moving_block = (21, [239])
-crush_blocks = (22, [221, 222, 223])
-falling_block = (23, [238])
-bouncing_boulder_tiles = [194, 195, 210, 211]
-bouncing_boulder = (24, bouncing_boulder_tiles)
-pushable_blocks = (25, [128, 130, 354])  # 354 invisible on 2-2
-question_block = (26, [129])
-# add pipes here if they should be separate
-spike = (28, [237])
-lever = (29, [225])  # Lever for level end
-
-# Enemies
-goomba = (30, [144])
-koopa = (30, [150, 151, 152, 153])
-shell = (32, [154, 155])
-explosion = (33, [157, 158])
-piranha_plant = (34, [146, 147, 148, 149])
-bill_launcher = (35, [135, 136])
-bullet_bill = (36, [249])
-projectiles = (
-    37,
-    [
-        # fireball
-        226,
-        # spitting plant seed
-        227,
-    ],
-)
-flying_moth_arrow = (37, [172, 188])
-
-# Level specific enemies
-sharedEnemy1 = [160, 161, 162, 163, 176, 177, 178, 179]
-moth = (30, sharedEnemy1)
-flying_moth = (30, [192, 193, 194, 195, 208, 209, 210, 211])
-sharedEnemy2 = [164, 165, 166, 167, 180, 181, 182, 183]
-sphinx = (30, sharedEnemy2)
-sharedEnemy3 = [192, 193, 208, 209]
-bone_fish = (30, sharedEnemy3)
-seahorse = (30, sharedEnemy2)
-sharedEnemy4 = [196, 197, 198, 199, 212, 213, 214, 215]
-robot = (30, sharedEnemy4)
-fist_rock = (30, sharedEnemy2)
-flying_rock = (30, [171, 187])
-falling_spider = (30, sharedEnemy4)
-jumping_spider = (30, sharedEnemy1)
-zombie = (30, sharedEnemy1)
-fire_worm = (30, sharedEnemy2)
-spitting_plant = (30, sharedEnemy3)
-fist = (51, [240, 241, 242, 243])
-
-# Bosses
-big_sphinx = (60, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
-big_sphinx_fire = (37, [196, 197, 212, 213])
-big_fist_rock = (62, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
-
-base_tiles = [
-    base_scripts,
-    mario_fireball,
-    mushroom,
-    flower,
-    star,
-    moving_block,
-    crush_blocks,
-    falling_block,
-    pushable_blocks,
-    question_block,
-    spike,
-    lever,
-    goomba,
-    koopa,
-    shell,
-    explosion,
-    piranha_plant,
-    bill_launcher,
-    bullet_bill,
-    projectiles,
-]
-
-
-def _buildCompressedTileset(tiles) -> np.ndarray:
-    compressedTileset = np.zeros(TILES, dtype=np.uint8)
-
-    for t in tiles:
-        i, tileList = t
-        for tile in tileList:
-            compressedTileset[tile] = i
-
-    return compressedTileset
-
-
-# different worlds use the same tiles for different things so only load
-# necessary tiles per world
-worldTilesets = {
-    1: _buildCompressedTileset(
-        [
-            *base_tiles,
-            world_1_2_blocks,
-            moth,
-            flying_moth,
-            flying_moth_arrow,
-            sphinx,
-            big_sphinx,
-            big_sphinx_fire,
-        ]
-    ),
-    2: _buildCompressedTileset(
-        [
-            *base_tiles,
-            world_1_2_blocks,
-            bone_fish,
-            seahorse,
-            robot,
-        ]
-    ),
-    3: _buildCompressedTileset(
-        [
-            *base_tiles,
-            world_3_4_blocks,
-            fist_rock,
-            flying_rock,
-            bouncing_boulder,
-            falling_spider,
-            jumping_spider,
-            big_fist_rock,
-        ]
-    ),
-    4: _buildCompressedTileset(
-        [
-            *base_tiles,
-            world_3_4_blocks,
-            zombie,
-            fire_worm,
-            spitting_plant,
-        ]
-    ),
-}
 
 
 class MarioLandSettings(EnvSettings):
@@ -416,7 +96,7 @@ class MarioLandSettings(EnvSettings):
         )
         self.stateCheckpoint = 0
         self.currentCheckpoint = 0
-        self.nextCheckpoint = 0
+        self.nextCheckpointRewardAt = 0
         # TODO: number of checkpoints should be able to differ between levels
         self.levelCheckpointRewards = {
             (1, 1): [950, 1605],
@@ -487,7 +167,7 @@ class MarioLandSettings(EnvSettings):
         self.stateCheckpoint = int(stateFile[4])
         self.currentCheckpoint = self.stateCheckpoint
 
-        self._setNextCheckpoint((world, level), self.stateCheckpoint)
+        self._setNextCheckpointRewardAt((world, level), self.stateCheckpoint)
         self.tileSet = worldTilesets[world]
 
         # seed randomizer
@@ -545,10 +225,10 @@ class MarioLandSettings(EnvSettings):
 
         return curState
 
-    def _setNextCheckpoint(self, world, currentCheckpoint):
-        self.nextCheckpoint = 0
+    def _setNextCheckpointRewardAt(self, world, currentCheckpoint):
+        self.nextCheckpointRewardAt = 0
         if currentCheckpoint < 2:
-            self.nextCheckpoint = self.levelCheckpointRewards[world][
+            self.nextCheckpointRewardAt = self.levelCheckpointRewards[world][
                 self.stateCheckpoint
             ]
 
@@ -614,21 +294,25 @@ class MarioLandSettings(EnvSettings):
         checkpoint = 0
         if (
             curState.levelProgressMax != prevState.levelProgressMax
-            and self.nextCheckpoint != 0
-            and curState.levelProgressMax >= self.nextCheckpoint
+            and self.nextCheckpointRewardAt != 0
+            and curState.levelProgressMax >= self.nextCheckpointRewardAt
         ):
             self.currentCheckpoint += 1
-            self._setNextCheckpoint(curState.world, self.currentCheckpoint)
+            self._setNextCheckpointRewardAt(curState.world, self.currentCheckpoint)
             checkpoint = CHECKPOINT_REWARD
 
+        # keep track of how long the agent is idle so we can end early
+        # in an evaluation
         if self.isEval:
             if curState.levelProgressMax - prevState.levelProgressMax == 0:
                 self.evalNoProgress += 1
             else:
                 self.evalNoProgress = 0
 
+        # reward getting powerups and manage powerup related bookkeeping
         powerup = self._handlePowerup(prevState, curState)
 
+        # reward damaging or killing a boss
         boss = 0
         if curState.bossActive and curState.bossHealth < prevState.bossHealth:
             if prevState.bossHealth - curState.bossHealth == 1:
@@ -902,8 +586,6 @@ class MarioLandSettings(EnvSettings):
 
     def hyperParameters(self, algo: str) -> Dict[str, Any]:
         match algo:
-            case "qrdqn":
-                return qrdqnConfig
             case "ppo":
                 return ppoConfig
             case _:
@@ -945,104 +627,3 @@ Moving platform: {curState.movingPlatformObj is not None}
 
     def render(self):
         return self.pyboy.screen_image()
-
-
-levelsToIdxes = {
-    (1, 1): 0,
-    (1, 2): 1,
-    (1, 3): 2,
-    (2, 1): 3,
-    (2, 2): 4,
-    (3, 1): 5,
-    (3, 2): 6,
-    (3, 3): 7,
-    (4, 1): 8,
-    (4, 2): 9,
-}
-
-levelEndPositions = [
-    2600,
-    2440,
-    2588,
-    2760,
-    2440,
-    3880,
-    2760,
-    2588,
-    3880,
-    3400,
-]
-
-
-class MarioLandOrchestrator(Orchestrator):
-    def __init__(self, env: VecEnv) -> None:
-        self.levelProgress = [None] * len(levelEndPositions)
-
-        self.warmup = N_WARMUP_EVALS
-        self.window = EVAL_WINDOW
-        self.stdCoef = STD_COEF
-        self.minProb = MIN_PROB
-        self.maxProb = MAX_PROB
-
-        super().__init__(env)
-
-    def processEvalInfo(self, info: Dict[str, Any]):
-        level = info["worldLevel"]
-        progress = info["levelProgress"]
-        idx = levelsToIdxes[level]
-        if self.levelProgress[idx] is not None:
-            self.levelProgress[idx].addProgress(progress)
-        else:
-            self.levelProgress[idx] = LevelProgress(self.window, progress)
-
-    def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
-        world, level = info["worldLevel"]
-        return [(f"{world}-{level}_progress", info["levelProgress"])]
-
-    def postEval(self):
-        if self.n_called >= self.warmup:
-            probs = [0] * len(levelEndPositions)
-            for idx, progress in enumerate(self.levelProgress):
-                if progress == None:
-                    continue
-
-                p = progress.average
-                if progress.stdDeviation > 0.0:
-                    p -= progress.stdDeviation / self.stdCoef
-
-                consistentProgress = 0.0
-                if p != 0.0:
-                    consistentProgress = p / levelEndPositions[idx]
-                    consistentProgress = 1 - np.clip(
-                        consistentProgress, self.minProb, self.maxProb
-                    )
-                    print(f"{idx}: {consistentProgress}")
-
-                probs[idx] = consistentProgress
-
-            # normalize probabilities
-            totalProb = sum(probs)
-            probs = [prob / totalProb for prob in probs]
-            print(probs)
-
-            options = {"_update_level_choose_probs": probs}
-            self.env.set_options(options)
-            self.env.reset()
-
-        super().postEval()
-
-
-class LevelProgress:
-    def __init__(self, window: int, progress: int) -> None:
-        self.window = window
-
-        self.progresses = deque([progress])
-        self.average = float(progress)
-        self.stdDeviation = 0.0
-
-    def addProgress(self, progress: int):
-        self.progresses.append(progress)
-        if len(self.progresses) > self.window:
-            self.progresses.popleft()
-        self.average = np.mean(self.progresses)
-        self.stdDeviation = np.std(self.progresses)
