@@ -14,6 +14,7 @@ from rl_playground.env_settings.env_settings import EnvSettings
 from rl_playground.env_settings.super_mario_land.game_area import (
     bouncing_boulder_tiles,
     worldTilesets,
+    getGameArea,
 )
 from rl_playground.env_settings.super_mario_land.ram import *
 
@@ -69,11 +70,6 @@ ppoConfig = {
 }
 
 
-# Game area dimensions
-GAME_AREA_HEIGHT = 16
-GAME_AREA_WIDTH = 20
-
-
 class MarioLandSettings(EnvSettings):
     def __init__(
         self,
@@ -91,9 +87,7 @@ class MarioLandSettings(EnvSettings):
         self.evalNoProgress = 0
         self.invincibilityTimer = 0
 
-        self.stateFiles = sorted(
-            [join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))]
-        )
+        self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
         self.stateCheckpoint = 0
         self.currentCheckpoint = 0
         self.nextCheckpointRewardAt = 0
@@ -113,9 +107,7 @@ class MarioLandSettings(EnvSettings):
 
         chooseProb = len(self.levelCheckpointRewards) / 100.0
         # all levels are equally likely to be trained on at the start
-        self.levelChooseProbs = [
-            chooseProb for _ in range(len(self.levelCheckpointRewards))
-        ]
+        self.levelChooseProbs = [chooseProb for _ in range(len(self.levelCheckpointRewards))]
 
         self.onGroundFor = 0
         self.movingPlatformJumpState = None
@@ -123,9 +115,7 @@ class MarioLandSettings(EnvSettings):
         # so level progress max will be set
         self.gameWrapper.start_game()
 
-    def reset(
-        self, options: dict[str, Any] | None = None
-    ) -> (MarioLandGameState, bool):
+    def reset(self, options: dict[str, Any] | None = None) -> (MarioLandGameState, bool):
         if options is not None:
             if "_eval_starting" in options:
                 # this will be passed before evals are started, reset the eval
@@ -152,6 +142,8 @@ class MarioLandSettings(EnvSettings):
             level = np.random.choice(10, p=self.levelChooseProbs)
             checkpoint = np.random.randint(3)
             self.stateIdx = (3 * level) + checkpoint
+
+        self.stateIdx = 18
 
         return self._loadLevel(), True
 
@@ -228,9 +220,7 @@ class MarioLandSettings(EnvSettings):
     def _setNextCheckpointRewardAt(self, world, currentCheckpoint):
         self.nextCheckpointRewardAt = 0
         if currentCheckpoint < 2:
-            self.nextCheckpointRewardAt = self.levelCheckpointRewards[world][
-                self.stateCheckpoint
-            ]
+            self.nextCheckpointRewardAt = self.levelCheckpointRewards[world][self.stateCheckpoint]
 
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()
@@ -320,15 +310,7 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = (
-            clock
-            + movement
-            + movingPlatform
-            + standingOnBoulder
-            + checkpoint
-            + powerup
-            + boss
-        )
+        reward = clock + movement + movingPlatform + standingOnBoulder + checkpoint + powerup + boss
 
         return reward, curState
 
@@ -348,10 +330,7 @@ class MarioLandSettings(EnvSettings):
             # only reward landing from a moving platform if mario made
             # forward progress to prevent rewarding from jumping backwards
             # or continually jumping from the same platform
-            if (
-                curState.levelProgressMax
-                > self.movingPlatformJumpState.levelProgressMax
-            ):
+            if curState.levelProgressMax > self.movingPlatformJumpState.levelProgressMax:
                 # Only reward jumping from a moving platform and landing
                 # on one if it's a different one, or more than 30 units
                 # were traveled. If mario jumps fast enough the platform
@@ -365,8 +344,7 @@ class MarioLandSettings(EnvSettings):
                         jumpPlatformObj.index != landPlatformObj.index
                         or jumpPlatformObj.typeID != landPlatformObj.typeID
                     )
-                    or curState.xPos - self.movingPlatformJumpState.xPos
-                    > jumpPlatformWidth
+                    or curState.xPos - self.movingPlatformJumpState.xPos > jumpPlatformWidth
                 ):
                     self.movingPlatformJumpState = None
                     return MOVING_PLATFORM_REWARD
@@ -388,21 +366,14 @@ class MarioLandSettings(EnvSettings):
 
         return 0
 
-    def _standingOnMovingPlatform(
-        self, curState: MarioLandGameState
-    ) -> (MarioLandObject | None, bool):
+    def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> (MarioLandObject | None, bool):
         for o in curState.objects:
-            if (
-                o.typeID in OBJ_TYPES_MOVING_PLATFORM
-                and curState.relYPos + 10 == o.relYPos
-            ):
+            if o.typeID in OBJ_TYPES_MOVING_PLATFORM and curState.relYPos + 10 == o.relYPos:
                 return o, True
         return None, False
 
     def _standingOnTiles(self, tiles: List[int]) -> bool:
-        sprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(
-            tiles, on_screen=True
-        )
+        sprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(tiles, on_screen=True)
         if len(sprites) == 0:
             return False
 
@@ -418,25 +389,15 @@ class MarioLandSettings(EnvSettings):
             for spriteIdx in spriteIdxs:
                 sprite = self.pyboy.botsupport_manager().sprite(spriteIdx)
                 # y positions are inverted for some reason
-                if (
-                    marioLegsYPos + 6 <= sprite.y and marioLegsYPos + 10 >= sprite.y
-                ) and (
-                    (
-                        leftMarioLegXPos >= sprite.x - 4
-                        and leftMarioLegXPos <= sprite.x + 4
-                    )
-                    or (
-                        rightMarioLegXPos >= sprite.x - 4
-                        and rightMarioLegXPos <= sprite.x + 4
-                    )
+                if (marioLegsYPos + 6 <= sprite.y and marioLegsYPos + 10 >= sprite.y) and (
+                    (leftMarioLegXPos >= sprite.x - 4 and leftMarioLegXPos <= sprite.x + 4)
+                    or (rightMarioLegXPos >= sprite.x - 4 and rightMarioLegXPos <= sprite.x + 4)
                 ):
                     return True
 
         return False
 
-    def _handlePowerup(
-        self, prevState: MarioLandGameState, curState: MarioLandGameState
-    ) -> int:
+    def _handlePowerup(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> int:
         powerup = 0
         if curState.gotStar:
             self.invincibilityTimer = STAR_TIME
@@ -478,19 +439,11 @@ class MarioLandSettings(EnvSettings):
 
         return powerup
 
-    def observation(
-        self, prevState: MarioLandGameState, curState: MarioLandGameState
-    ) -> Any:
-        obs = self.gameWrapper._game_area_np(self.tileSet)
-
-        # if mario is invincible his sprites will periodically flash by
-        # cycling between being visible and not visible, ensure they are
-        # always visible in the game area
-        if curState.isInvincible:
-            self._drawMario(obs)
+    def observation(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> Any:
+        gameArea = getGameArea(self.pyboy, self.tileSet, curState)
 
         # flatten the game area array so it's Box compatible
-        flatObs = np.concatenate(obs.tolist(), axis=None, dtype=np.int32)
+        flatObs = np.concatenate(gameArea.tolist(), axis=None, dtype=np.int32)
 
         # add other features
         return np.append(
@@ -506,43 +459,17 @@ class MarioLandSettings(EnvSettings):
             ],
         )
 
-    def _drawMario(self, obs):
-        # convert relative to screen y pos to sprite pos
-        relYPos = self.pyboy.get_memory_value(0xC201) - 22
-        marioLeftHead = self.pyboy.botsupport_manager().sprite(3)
-        x1 = marioLeftHead.x // 8
-        x2 = x1 + 1
-        if marioLeftHead.attr_x_flip:
-            x2 = x1 - 1
+    def entityObs(self, prevState: MarioLandGameState, curState: MarioLandGameState):
+        pass
 
-        y1 = (marioLeftHead.y // 8) - 1
-        if y1 >= GAME_AREA_HEIGHT:
-            # sprite is not visible so y pos is off screen, set it to
-            # correct pos where mario is
-            y1 = (relYPos // 8) - 1
-        y2 = y1 - 1
-
-        if y1 >= 0 and y1 < GAME_AREA_HEIGHT:
-            obs[y1][x1] = 1
-            obs[y1][x2] = 1
-        if y2 >= 0 and y2 < GAME_AREA_HEIGHT:
-            obs[y2][x1] = 1
-            obs[y2][x2] = 1
-
-    def terminated(
-        self, prevState: MarioLandGameState, curState: MarioLandGameState
-    ) -> bool:
+    def terminated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
         return self._isDead(curState)
 
-    def truncated(
-        self, prevState: MarioLandGameState, curState: MarioLandGameState
-    ) -> bool:
+    def truncated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
         # if no forward progress has been made in 15s, end the eval episode
         # if the level is completed end this episode so the next level
         # isn't played twice
-        return self.isEval and (
-            self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR
-        )
+        return self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR)
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
         return curState.deadJumpTimer != 0 or curState.statusTimer == TIMER_DEATH
@@ -603,9 +530,7 @@ class MarioLandSettings(EnvSettings):
             "levelProgress": curState.levelProgressMax,
         }
 
-    def printGameState(
-        self, prevState: MarioLandGameState, curState: MarioLandGameState
-    ):
+    def printGameState(self, prevState: MarioLandGameState, curState: MarioLandGameState):
         objects = ""
         for i, o in enumerate(curState.objects):
             objects += f"{i}: {o.typeID} {o.relXPos} {o.relYPos}\n"

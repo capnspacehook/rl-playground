@@ -1,6 +1,14 @@
+from typing import Any, Dict
 import numpy as np
+from pyboy import PyBoy
 from pyboy.botsupport.constants import TILES
 
+from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState
+
+
+# Game area dimensions
+GAME_AREA_HEIGHT = 16
+GAME_AREA_WIDTH = 20
 
 base_scripts = (1, list(range(81)))
 plane = (2, list(range(99, 110)))
@@ -105,7 +113,10 @@ fist = (51, [240, 241, 242, 243])
 # Bosses
 big_sphinx = (60, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
 big_sphinx_fire = (37, [196, 197, 212, 213])
-big_fist_rock = (62, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
+big_fist_rock = (61, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
+
+# update if the maximum tile value changes
+MAX_TILE = 61
 
 base_tiles = [
     base_scripts,
@@ -188,3 +199,39 @@ worldTilesets = {
         ]
     ),
 }
+
+
+def getGameArea(
+    pyboy: PyBoy,
+    tileSet: np.ndarray,
+    curState: MarioLandGameState,
+) -> np.ndarray:
+    gameArea = pyboy.game_wrapper()._game_area_np(tileSet)
+    if curState.isInvincible:
+        _drawMario(pyboy, gameArea)
+
+    return gameArea
+
+
+def _drawMario(pyboy: PyBoy, gameArea: np.ndarray):
+    # convert relative to screen y pos to sprite pos
+    relYPos = pyboy.get_memory_value(0xC201) - 22
+    marioLeftHead = pyboy.botsupport_manager().sprite(3)
+    x1 = marioLeftHead.x // 8
+    x2 = x1 + 1
+    if marioLeftHead.attr_x_flip:
+        x2 = x1 - 1
+
+    y1 = (marioLeftHead.y // 8) - 1
+    if y1 >= GAME_AREA_HEIGHT:
+        # sprite is not visible so y pos is off screen, set it to
+        # correct pos where mario is
+        y1 = (relYPos // 8) - 1
+    y2 = y1 - 1
+
+    if y1 >= 0 and y1 < GAME_AREA_HEIGHT:
+        gameArea[y1][x1] = 1
+        gameArea[y1][x2] = 1
+    if y2 >= 0 and y2 < GAME_AREA_HEIGHT:
+        gameArea[y2][x1] = 1
+        gameArea[y2][x2] = 1

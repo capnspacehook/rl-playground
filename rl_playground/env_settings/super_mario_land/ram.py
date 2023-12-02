@@ -1,8 +1,10 @@
+from typing import List
 from pyboy import PyBoy
 
 from rl_playground.env_settings.env_settings import GameState
 
 # Memory constants
+LEVEL_BLOCK_MEM_VAL = 0xC0AB
 MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
 MARIO_X_POS_MEM_VAL = 0xC202
 MARIO_Y_POS_MEM_VAL = 0xC201
@@ -39,19 +41,18 @@ class MarioLandGameState(GameState):
         self.gameWrapper = pyboy.game_wrapper()
 
         # Find the real level progress x
-        levelBlock = pyboy.get_memory_value(0xC0AB)
+        levelBlock = pyboy.get_memory_value(LEVEL_BLOCK_MEM_VAL)
         self.relXPos = pyboy.get_memory_value(MARIO_X_POS_MEM_VAL)
         scx = pyboy.botsupport_manager().screen().tilemap_position_list()[16][0]
         real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
         self.xPos = levelBlock * 16 + real + self.relXPos
 
         self.relYPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
-        # 185 is lowest y pos before mario is dead, y coordinate is flipped, 0 is higher than 1
-        if self.relYPos <= 185:
-            self.yPos = 185 - self.relYPos
-        else:
-            # handle underflow
-            self.yPos = 185 + (256 - self.relYPos)
+        self.yPos = convertYPos(self.relYPos)
+
+        # will be set later
+        self.xSpeed = 0
+        self.ySpeed = 0
 
         self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
         self.world = self.gameWrapper.world
@@ -60,7 +61,7 @@ class MarioLandGameState(GameState):
         self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
         self.movingPlatformObj = None
 
-        self.objects = []
+        self.objects: List[MarioLandObject] = []
         self.bossActive = False
         self.bossHealth = 0
         for i in range(10):
@@ -69,8 +70,10 @@ class MarioLandGameState(GameState):
             if objType == 255:
                 continue
             relXPos = self.pyboy.get_memory_value(addr + 0x3)
+            xPos = levelBlock * 16 + real + relXPos
             relYPos = self.pyboy.get_memory_value(addr + 0x2)
-            self.objects.append(MarioLandObject(i, objType, relXPos, relYPos))
+            yPos = convertYPos(relYPos)
+            self.objects.append(MarioLandObject(i, objType, xPos, yPos))
 
             if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
                 self.bossActive = True
@@ -101,9 +104,22 @@ class MarioLandGameState(GameState):
             self.isInvincible = True
 
 
+def convertYPos(relYPos: int) -> int:
+    yPos = 0
+
+    # 185 is lowest y pos before mario is dead, y coordinate is flipped, 0 is higher than 1
+    if relYPos <= 185:
+        yPos = 185 - relYPos
+    else:
+        # handle underflow
+        yPos = 185 + (256 - relYPos)
+
+    return yPos
+
+
 class MarioLandObject:
     def __init__(self, index, typeID, x, y) -> None:
         self.index = index
         self.typeID = typeID
-        self.relXPos = x
-        self.relYPos = y
+        self.xPos = x
+        self.yPos = y
