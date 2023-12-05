@@ -1,14 +1,11 @@
-from typing import Any, Dict
+from typing import Any, Deque, Dict
 import numpy as np
 from pyboy import PyBoy
 from pyboy.botsupport.constants import TILES
 
+from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState
 
-
-# Game area dimensions
-GAME_AREA_HEIGHT = 16
-GAME_AREA_WIDTH = 20
 
 base_scripts = (1, list(range(81)))
 plane = (2, list(range(99, 110)))
@@ -115,9 +112,6 @@ big_sphinx = (60, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 2
 big_sphinx_fire = (37, [196, 197, 212, 213])
 big_fist_rock = (61, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 
-# update if the maximum tile value changes
-MAX_TILE = 61
-
 base_tiles = [
     base_scripts,
     mario_fireball,
@@ -210,7 +204,9 @@ def getGameArea(
     if curState.isInvincible:
         _drawMario(pyboy, gameArea)
 
-    return gameArea
+    # _game_area_np returns an ndarray with dtype uint16, pytorch doesn't
+    # support uint16 for some reason
+    return gameArea.astype(dtype=np.uint8, copy=False)
 
 
 def _drawMario(pyboy: PyBoy, gameArea: np.ndarray):

@@ -1,46 +1,87 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Deque, Dict, Tuple
+
 from gymnasium import spaces
 import numpy as np
 from pyboy import PyBoy
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, TensorDict
-import torch as th
-from torch import nn
 
-from rl_playground.env_settings.super_mario_land.game_area import MAX_TILE, getGameArea
+from gymnasium.wrappers.frame_stack import FrameStack
+
+from rl_playground.env_settings.super_mario_land.constants import *
+from rl_playground.env_settings.super_mario_land.game_area import getGameArea
 from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState
+from rl_playground.env_settings.super_mario_land.settings import N_STACK
 
 
-# max number of objects that can be on screen at once (excluding mario)
-N_OBJECTS = 10
-# max number of objects that con be on screen at once
-N_ENTITIES = N_OBJECTS + 1
+def observationSpace() -> spaces.Space:
+    return spaces.Dict(
+        {
+            GAME_AREA_OBS: spaces.Box(
+                low=0, high=MAX_TILE, shape=(N_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
+            ),
+            ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_STACK, N_ENTITIES), dtype=np.uint8),
+            ENTITY_INFO_OBS: spaces.Box(low=0, high=1, shape=(N_STACK, N_ENTITIES, 6), dtype=np.float32),
+            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(N_STACK, 5), dtype=np.float32),
+        }
+    )
 
-MAX_X_POS = 160
-MAX_Y_POS = 200
 
-
-def getObservation(
-    pyboy: PyBoy, tileSet: np.ndarray, prevState: MarioLandGameState, curState: MarioLandGameState
+def getStackedObservation(
+    pyboy: PyBoy,
+    tileSet: np.ndarray,
+    obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]],
+    prevState: MarioLandGameState,
+    curState: MarioLandGameState,
 ) -> Dict[str, Any]:
-    gameArea = getGameArea(pyboy, tileSet, curState)
-    entities = getEntityIDsAndInfo(prevState, curState)
-    scalar = getScalarFeatures(curState)
+    gameArea, entityIDs, entityInfos, scalar = getObservations(pyboy, tileSet, prevState, curState)
 
+    obsCache[0].append(gameArea)
+    obsCache[1].append(entityIDs)
+    obsCache[2].append(entityInfos)
+    obsCache[3].append(scalar)
+
+    return combineObservations(obsCache)
+
+
+def getObservations(
+    pyboy: PyBoy,
+    tileSet: np.ndarray,
+    prevState: MarioLandGameState,
+    curState: MarioLandGameState,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    return (
+        getGameArea(pyboy, tileSet, curState),
+        *getEntityIDsAndInfo(prevState, curState),
+        getScalarFeatures(curState),
+    )
+
+
+def combineObservations(
+    obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]]
+) -> Dict[str, Any]:
     return {
-        "gameArea": gameArea,
-        "entities": entities,
-        "scalar": scalar,
+        GAME_AREA_OBS: np.squeeze(np.array(obsCache[0])),
+        ENTITY_ID_OBS: np.squeeze(np.array(obsCache[1])),
+        ENTITY_INFO_OBS: np.squeeze(np.array(obsCache[2])),
+        SCALAR_OBS: np.squeeze(np.array(obsCache[3])),
     }
 
 
 def getEntityIDsAndInfo(
-    prevState: MarioLandGameState, curState: MarioLandGameState
+    prevState: MarioLandGameState,
+    curState: MarioLandGameState,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    ids = np.zeros((11,), dtype=np.int16)
-    # the first ID will be skipped, that will represent mario who will be 0
-    for i in range(1, N_OBJECTS):
-        # TODO: coalesce typeID to curated list
-        ids[i] = curState.objects[i - 1].typeID
+    # a level was completed on the last step, discard the last step's
+    # state to avoid incorrect speed and acceleration calculations
+    if prevState.world != curState.world:
+        prevState = curState
+
+    ids = np.zeros((N_ENTITIES,), dtype=np.uint8)
+    # the first ID is always mario
+    ids[0] = 1
+    if len(curState.objects) != 0:
+        for i in range(1, len(curState.objects)):
+            # TODO: coalesce typeID to curated list
+            ids[i] = curState.objects[i - 1].typeID
 
     # TODO: maybe make these an average over multiple frames?
     # pass in a list of game states maybe?
@@ -49,124 +90,67 @@ def getEntityIDsAndInfo(
     xAccel = curState.xSpeed - prevState.xSpeed
     yAccel = curState.ySpeed - prevState.ySpeed
 
-    infos = np.zeros((11, 6), dtype=np.int16)
-    infos[0] = np.array(
+    entities = np.zeros((N_ENTITIES, 6), dtype=np.float32)
+    entities[0] = np.array(
         [
             scaledEncoding(curState.xPos, MAX_X_POS, True),
             scaledEncoding(curState.yPos, MAX_Y_POS, True),
-            scaledEncoding(curState.xSpeed, 2, False),
-            scaledEncoding(curState.ySpeed, 4, False),
-            scaledEncoding(xAccel, 4, False),
-            scaledEncoding(yAccel, 8, False),
+            scaledEncoding(curState.xSpeed, MAX_X_SPEED, False),
+            scaledEncoding(curState.ySpeed, MAX_Y_SPEED, False),
+            scaledEncoding(xAccel, MAX_X_SPEED * 2, False),
+            scaledEncoding(yAccel, MAX_Y_SPEED * 2, False),
         ]
     )
-    for i in range(1, N_OBJECTS):
-        obj = curState.objects[i - 1]
-        if obj.relXPos > MAX_X_POS or obj.relYPos > MAX_Y_POS:
-            continue
+    if len(curState.objects) != 0:
+        for i in range(1, len(curState.objects)):
+            obj = curState.objects[i - 1]
+            if obj.relXPos > MAX_REL_X_POS or obj.yPos > MAX_Y_POS:
+                continue
 
-        infos[i] = np.array(
-            [
-                scaledEncoding(obj.relXPos, MAX_X_POS, True),
-                scaledEncoding(obj.relYPos, MAX_Y_POS, True),
-                # TODO: calculate speeds and accels with prevState
-                0,
-                0,
-                0,
-                0,
-            ]
-        )
+            entities[i] = np.array(
+                [
+                    scaledEncoding(obj.xPos, MAX_X_POS, True),
+                    scaledEncoding(obj.yPos, MAX_Y_POS, True),
+                    # TODO: calculate speeds and accels with prevState
+                    0,
+                    0,
+                    0,
+                    0,
+                ]
+            )
 
-    return (ids, infos)
+    return (ids, entities)
 
 
 def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
     return np.array(
-        [
-            oneHotEncoding(curState.powerupStatus, 3),
-            oneHotEncoding(int(curState.hasStar), 1),
-            scaledEncoding(curState.invincibleTimer, 960),
-        ]
+        np.concatenate(
+            (
+                oneHotEncoding(curState.powerupStatus, 3),
+                np.array([float(curState.hasStar)], dtype=np.float32),
+                np.array([scaledEncoding(curState.invincibleTimer, 960, True)], dtype=np.float32),
+            ),
+        )
     )
 
 
 def scaledEncoding(val: int, max: int, minIsZero: bool) -> float:
+    # if val > max:
+    #     print(f"{val} > {max}")
+    # elif minIsZero and val < 0:
+    #     print(f"{val} < 0")
+    # elif not minIsZero and val < -max:
+    #     print(f"{val} < {-max}")
+
+    scaled = 0.0
     if minIsZero:
-        return val / max
-    # minimum value is less than zero, ensure scaling minimum is zero
-    return (val + max) / (max * 2)
+        scaled = val / max
+    else:
+        # minimum value is less than zero, ensure scaling minimum is zero
+        scaled = (val + max) / (max * 2)
+
+    return np.clip(scaled, 0.0, 1.0)
 
 
 def oneHotEncoding(val: int, max: int) -> np.ndarray:
-    return np.identity(max)[val : val + 1]
-
-
-class MarioLandExtractor(BaseFeaturesExtractor):
-    def __init__(
-        self,
-        observation_space: spaces.Dict,
-        activation_layer: nn.Module = nn.ReLU,
-        n_hidden_layers: int = 32,
-    ) -> None:
-        # TODO we do not know features-dim here before going over all the items, so put something there. This is dirty!
-        super().__init__(observation_space, features_dim=1)
-
-        # (gameArea (nStack, 16, 20)
-        gameArea = observation_space["gameArea"]
-        inputChannels, xDim, yDim = gameArea.shape
-        self.gameAreaCNN = nn.Sequential(
-            nn.Conv2d(inputChannels, 32, kernel_size=2, stride=1, padding=0),
-            activation_layer(),
-            # max pool to downsample
-            nn.AdaptiveMaxPool2d(output_size=(xDim // 2, yDim // 2)),
-            nn.Conv2d(32, 32, kernel_size=2, stride=1, padding=0),
-            activation_layer(),
-            nn.Flatten(),
-            # TODO: add 2 FC layers?
-        )
-        cnnOutputSize = _computeShape(gameArea, self.gameAreaCNN)
-
-        entityIDs, entityInfos = observation_space["entities"]
-        # there are single maximum value for these spaces
-        assert np.all(entityIDs.high == entityIDs.high[0])
-        assert np.all(entityInfos.high == entityInfos.high[0])
-
-        # entityIDs (nStack, 11) -> (nStack, 11, 8)
-        self.entityIDEmbedding = nn.Embedding(entityIDs.high[0], 8)
-
-        # entityInfos (nStack, 11, 6) -> (nStack, 11, hiddenLayers)
-        self.entityFC = nn.Sequential(
-            nn.Linear(entityInfos.shape[2], n_hidden_layers),
-            activation_layer(),
-            nn.Linear(n_hidden_layers, n_hidden_layers),
-            activation_layer(),
-        )
-
-        self.entityMaxPool = nn.AdaptiveMaxPool2d(output_size=(1, n_hidden_layers))
-
-        # TODO: change
-        self._features_dim = 0
-
-    def forward(self, observations: TensorDict) -> th.Tensor:
-        # normalize game area
-        gameArea = observations["gameArea"].float() / float(MAX_TILE)
-        gameArea = self.gameAreaCNN(gameArea)  # (32, 63)
-
-        entityIDs, entityInfos = observations["entities"]
-        embeddedEntityIDs = self.entityIDEmbedding(entityIDs.to(th.int))  # (nStack, 11, 8)
-        entityInfos = entityInfos.to(th.int)  # (nStack, 11, 6)
-        entities = th.cat((embeddedEntityIDs, entityInfos), dim=-1)  # (nStack, 11, 14)
-        entities = self.entityFC(entities)  # (nStack, 11, hiddenLayers)
-        entities = self.entityMaxPool(entities).squeeze(-2)  # (nStack, hiddenLayers)
-
-        scalar = observations["scalar"]  # (nStack, 5)
-
-        allFeatures = th.cat((gameArea, entities, scalar), dim=-1)  # (nStack, ?)
-
-        return allFeatures
-
-
-def _computeShape(observation_space: spaces.Space, mod: nn.Module) -> int:
-    with th.no_grad():
-        t = th.as_tensor(observation_space.sample()[None])
-        return mod(t).shape[1]
+    return np.squeeze(np.identity(max, dtype=np.float32)[val : val + 1])

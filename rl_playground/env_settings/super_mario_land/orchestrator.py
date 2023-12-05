@@ -5,15 +5,8 @@ import numpy as np
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
 from rl_playground.env_settings.env_settings import Orchestrator
+from rl_playground.env_settings.super_mario_land.settings import *
 
-
-# Training level selection settings
-N_WARMUP_EVALS = 10
-EVAL_WINDOW = 15
-STD_COEF = 1.5
-# probabilities before normalization
-MIN_PROB = 0.01
-MAX_PROB = 0.99
 
 levelsToIdxes = {
     (1, 1): 0,
@@ -81,9 +74,7 @@ class MarioLandOrchestrator(Orchestrator):
                 consistentProgress = 0.0
                 if p != 0.0:
                     consistentProgress = p / levelEndPositions[idx]
-                    consistentProgress = np.clip(
-                        1 - consistentProgress, self.minProb, self.maxProb
-                    )
+                    consistentProgress = np.clip(1 - consistentProgress, self.minProb, self.maxProb)
                     print(f"{idx}: {consistentProgress}")
 
                 probs[idx] = consistentProgress
@@ -104,13 +95,11 @@ class LevelProgress:
     def __init__(self, window: int, progress: int) -> None:
         self.window = window
 
-        self.progresses = deque([progress])
+        self.progresses = deque([progress], maxlen=N_STACK)
         self.average = float(progress)
         self.stdDeviation = 0.0
 
     def addProgress(self, progress: int):
         self.progresses.append(progress)
-        if len(self.progresses) > self.window:
-            self.progresses.popleft()
         self.average = np.mean(self.progresses)
         self.stdDeviation = np.std(self.progresses)

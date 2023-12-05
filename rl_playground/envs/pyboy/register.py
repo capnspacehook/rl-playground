@@ -1,13 +1,12 @@
 import logging
 from pathlib import Path
 
-from gymnasium.wrappers.frame_stack import FrameStack
 from pyboy import PyBoy
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 
 from rl_playground.env_settings.metroid2.metroid2 import Metroid2Settings
-from rl_playground.env_settings.super_mario_land.env_settings import MarioLandSettings
+from rl_playground.env_settings.super_mario_land.super_mario_land import MarioLandSettings
 from rl_playground.env_settings.super_mario_land.orchestrator import (
     MarioLandOrchestrator,
 )
@@ -35,7 +34,7 @@ def createPyboyEnv(
         rom,
         window_type="SDL2" if render else "headless",
         scale=4,
-        debug=isPlaytest,
+        debug=False,
         game_wrapper=True,
     )
     pyboy._rendering(shouldRender)
@@ -60,7 +59,6 @@ def createPyboyEnv(
 
     env = Monitor(env)
     env = FrameSkip(env, skip=4)
-    env = FrameStack(env, num_stack=6)
 
     # check_env(env)
 

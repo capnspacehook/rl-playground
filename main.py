@@ -58,9 +58,7 @@ def train(args):
         seed = np.random.randint(2**32 - 1, dtype="int64").item()
     print(f"seed: {seed}")
 
-    numTrainingEnvs = (
-        os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
-    )
+    numTrainingEnvs = os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
     trainingVec = SubprocVecEnv
     if numTrainingEnvs == 1:
         trainingVec = DummyVecEnv
@@ -101,12 +99,8 @@ def train(args):
         model = args.algo.load(args.model_checkpoint, env=trainingEnv)
     else:
         if normalizeObs or normalizeRewards:
-            trainingEnv = VecNormalize(
-                trainingEnv, norm_obs=normalizeObs, norm_reward=normalizeRewards
-            )
-            evalEnv = VecNormalize(
-                evalEnv, training=False, norm_obs=normalizeObs, norm_reward=False
-            )
+            trainingEnv = VecNormalize(trainingEnv, norm_obs=normalizeObs, norm_reward=normalizeRewards)
+            evalEnv = VecNormalize(evalEnv, training=False, norm_obs=normalizeObs, norm_reward=False)
             if "gamma" in config:
                 trainingEnv.gamma = config["gamma"]
                 evalEnv.gamma = config["gamma"]
@@ -149,11 +143,7 @@ def train(args):
         print(f"Quitting: {e}")
 
     model.save(saveDir / "rl_model_done.zip")
-    if (
-        args.save_replay_buffers
-        and hasattr(model, "replay_buffer")
-        and model.replay_buffer is not None
-    ):
+    if args.save_replay_buffers and hasattr(model, "replay_buffer") and model.replay_buffer is not None:
         model.save_replay_buffer(saveDir / "rl_model_done_rb.pkl")
     if model.get_vec_normalize_env() is not None:
         model.get_vec_normalize_env().save(saveDir / "rl_model_done_vn.pkl")
@@ -227,9 +217,7 @@ def replay(args):
 def playtest(args):
     print("Playtest mode")
 
-    _, env, _ = createPyboyEnv(
-        args.rom, args.render, args.emulation_speed, isPlaytest=True
-    )
+    _, env, _ = createPyboyEnv(args.rom, args.render, args.emulation_speed, isPlaytest=True)
     env.reset()
 
     rewards = []
@@ -246,7 +234,7 @@ def playtest(args):
                     recentRewards.pop()
                 recentRewards.insert(0, reward)
 
-            print(f"Recent rewards: {recentRewards}", flush=True)
+            # print(f"Recent rewards: {recentRewards}", flush=True)
     except KeyboardInterrupt:
         pass
 
@@ -258,15 +246,9 @@ def playtest(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("rl-playground")
     mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
-        "-t", "--train", action="store_true", help="train AI to play a game"
-    )
-    mode_group.add_argument(
-        "--evaluate", action="store_true", help="evaluate a network"
-    )
-    mode_group.add_argument(
-        "-r", "--replay", action="store_true", help="replay a training episode"
-    )
+    mode_group.add_argument("-t", "--train", action="store_true", help="train AI to play a game")
+    mode_group.add_argument("--evaluate", action="store_true", help="evaluate a network")
+    mode_group.add_argument("-r", "--replay", action="store_true", help="replay a training episode")
     mode_group.add_argument(
         "--playtest",
         action="store_true",
@@ -298,9 +280,7 @@ if __name__ == "__main__":
         default="",
         help="name of this training run for organization purposes",
     )
-    parser.add_argument(
-        "--notes", type=str, default="", help="notes about this training run to store"
-    )
+    parser.add_argument("--notes", type=str, default="", help="notes about this training run to store")
     parser.add_argument(
         "--save-replay-buffers",
         action="store_true",
@@ -340,9 +320,7 @@ if __name__ == "__main__":
         default="auto",
         help="device to use to train, cpu, cuda or auto",
     )
-    parser.add_argument(
-        "--seed", type=int, default=-1, help="seed to make randomness reproducible"
-    )
+    parser.add_argument("--seed", type=int, default=-1, help="seed to make randomness reproducible")
     parser.add_argument(
         "--disable-wandb",
         action="store_true",

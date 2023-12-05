@@ -54,8 +54,7 @@ class PyBoyEnv(Env):
             WindowEvent.RELEASE_BUTTON_START,
         ]
         self._release_button = {
-            button: r_button
-            for button, r_button in zip(self._buttons, self._buttons_release)
+            button: r_button for button, r_button in zip(self._buttons, self._buttons_release)
         }
 
         # set the action and observation spaces
@@ -74,7 +73,9 @@ class PyBoyEnv(Env):
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
 
-        self.prevGameState, envReset = self.envSettings.reset(options=options)
+        if options is not None:
+            options["_prevState"] = self.prevGameState
+        obs, self.prevGameState, envReset = self.envSettings.reset(options=options)
 
         if envReset:
             if not self._started:
@@ -84,7 +85,7 @@ class PyBoyEnv(Env):
 
             self.button_is_pressed = {button: False for button in self._buttons}
 
-        return self.envSettings.observation(self.prevGameState, self.prevGameState), {}
+        return obs, {}
 
     def step(self, action_idx: Any) -> tuple[Any, float, bool, bool, dict[str, Any]]:
         if self.prevGameState is None:
@@ -101,9 +102,7 @@ class PyBoyEnv(Env):
             self.envSettings.printGameState(self.prevGameState, curGameState)
 
         obs = self.envSettings.observation(self.prevGameState, curGameState)
-        terminated = pyboyDone or self.envSettings.terminated(
-            self.prevGameState, curGameState
-        )
+        terminated = pyboyDone or self.envSettings.terminated(self.prevGameState, curGameState)
         truncated = self.envSettings.truncated(self.prevGameState, curGameState)
         info = self.envSettings.info(self.prevGameState)
 
@@ -114,9 +113,7 @@ class PyBoyEnv(Env):
     def sendInputs(self, actions: list[int]):
         # release buttons that were pressed in the past
         for pressedFromBefore in [
-            pressed
-            for pressed in self._button_is_pressed
-            if self._button_is_pressed[pressed] == True
+            pressed for pressed in self._button_is_pressed if self._button_is_pressed[pressed] == True
         ]:  # get all buttons currently pressed
             if pressedFromBefore not in actions:
                 release = self._release_button[pressedFromBefore]

@@ -1,4 +1,5 @@
-from typing import Any, Callable, Dict, List, Union
+from collections import deque
+from typing import Any, Dict, List
 from os import listdir
 from os.path import basename, isfile, join, splitext
 import random
@@ -6,68 +7,20 @@ from pathlib import Path
 
 import numpy as np
 import torch.nn as nn
-from gymnasium.spaces import Box, Discrete, Space
+from gymnasium.spaces import Discrete, Space
 from pyboy import PyBoy, WindowEvent
-from pyboy.botsupport.constants import TILES
 
 from rl_playground.env_settings.env_settings import EnvSettings
-from rl_playground.env_settings.super_mario_land.game_area import (
-    bouncing_boulder_tiles,
-    worldTilesets,
-    getGameArea,
+from rl_playground.env_settings.super_mario_land.constants import MAX_X_SPEED
+from rl_playground.env_settings.super_mario_land.game_area import bouncing_boulder_tiles, worldTilesets
+from rl_playground.env_settings.super_mario_land.observation import (
+    combineObservations,
+    getObservations,
+    getStackedObservation,
+    observationSpace,
 )
 from rl_playground.env_settings.super_mario_land.ram import *
-
-
-# Reward values
-DEATH_PUNISHMENT = -25
-HIT_PUNISHMENT = -5
-# TODO: linearly increase to encourage progress over speed
-# earlier, then after game mechanics and levels are learned
-# encourage speed more
-CLOCK_PUNISHMENT = -0.01
-MOVEMENT_REWARD_COEF = 1
-MUSHROOM_REWARD = 20
-FLOWER_REWARD = 20
-STAR_REWARD = 30
-MOVING_PLATFORM_REWARD = 7.5
-BOULDER_REWARD = 3
-HIT_BOSS_REWARD = 10
-KILL_BOSS_REWARD = 25
-CHECKPOINT_REWARD = 25
-
-# Random env settings
-RANDOM_NOOP_FRAMES = 60
-RANDOM_POWERUP_CHANCE = 25
-
-
-def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
-    # Force conversion to float
-    _initial_value = float(initial_value)
-
-    def _schedule(progress_remaining: float) -> float:
-        return progress_remaining * _initial_value
-
-    return _schedule
-
-
-ppoConfig = {
-    "policy": "MlpPolicy",
-    "batch_size": 512,
-    "clip_range": 0.2,
-    "ent_coef": 9.513020308749457e-06,
-    "gae_lambda": 0.98,
-    "gamma": 0.995,
-    "learning_rate": 3e-05,
-    "max_grad_norm": 5,
-    "n_epochs": 5,
-    "n_steps": 512,
-    "vf_coef": 0.33653746631712467,
-    "policy_kwargs": dict(
-        activation_fn=nn.ReLU,
-        net_arch=dict(pi=[256, 256], vf=[256, 256]),
-    ),
-}
+from rl_playground.env_settings.super_mario_land.settings import *
 
 
 class MarioLandSettings(EnvSettings):
@@ -79,6 +32,13 @@ class MarioLandSettings(EnvSettings):
     ):
         self.pyboy = pyboy
         self.gameWrapper = self.pyboy.game_wrapper()
+
+        self.observationCaches = [
+            deque(maxlen=N_STACK),
+            deque(maxlen=N_STACK),
+            deque(maxlen=N_STACK),
+            deque(maxlen=N_STACK),
+        ]
 
         self.isEval = isEval
         self.tileSet = None
@@ -115,7 +75,7 @@ class MarioLandSettings(EnvSettings):
         # so level progress max will be set
         self.gameWrapper.start_game()
 
-    def reset(self, options: dict[str, Any] | None = None) -> (MarioLandGameState, bool):
+    def reset(self, options: dict[str, Any] | None = None) -> (Any, MarioLandGameState, bool):
         if options is not None:
             if "_eval_starting" in options:
                 # this will be passed before evals are started, reset the eval
@@ -125,7 +85,8 @@ class MarioLandSettings(EnvSettings):
                 # an eval has ended, update the level choose probabilities
                 self.levelChooseProbs = options["_update_level_choose_probs"]
 
-            return self.gameState(), False
+            curState = self.gameState()
+            return self.observation(options["_prevState"], curState), curState, False
 
         self.onGroundFor = 0
         self.movingPlatformJumpState = None
@@ -143,9 +104,16 @@ class MarioLandSettings(EnvSettings):
             checkpoint = np.random.randint(3)
             self.stateIdx = (3 * level) + checkpoint
 
-        self.stateIdx = 18
+        curState = self._loadLevel()
 
-        return self._loadLevel(), True
+        # reset the observation cache
+        gameArea, entityID, entityInfo, scalar = getObservations(self.pyboy, self.tileSet, curState, curState)
+        [self.observationCaches[0].append(gameArea) for _ in range(N_STACK)]
+        [self.observationCaches[1].append(entityID) for _ in range(N_STACK)]
+        [self.observationCaches[2].append(entityInfo) for _ in range(N_STACK)]
+        [self.observationCaches[3].append(scalar) for _ in range(N_STACK)]
+
+        return combineObservations(self.observationCaches), curState, True
 
     def _loadLevel(self) -> MarioLandGameState:
         stateFile = self.stateFiles[self.stateIdx]
@@ -253,6 +221,15 @@ class MarioLandSettings(EnvSettings):
 
         # add time punishment every step to encourage speed more
         clock = CLOCK_PUNISHMENT
+
+        # In rare occasions (jumping on a moving platform in 3-3 for
+        # instance) the scroll X value is ~16, while in the next frame
+        # the scroll X value is where it was before but the level block
+        # increased making the X position wildly jump again. Until I
+        # figure out how to properly fix this, just use the previous
+        # X position if the position difference is too large to be normal.
+        if abs(curState.xPos - prevState.xPos) > MAX_X_SPEED:
+            curState.xPos = prevState.xPos
         movement = (curState.xPos - prevState.xPos) * MOVEMENT_REWARD_COEF
 
         # the game registers mario as on the ground 1 or 2 frames before
@@ -368,7 +345,7 @@ class MarioLandSettings(EnvSettings):
 
     def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> (MarioLandObject | None, bool):
         for o in curState.objects:
-            if o.typeID in OBJ_TYPES_MOVING_PLATFORM and curState.relYPos + 10 == o.relYPos:
+            if o.typeID in OBJ_TYPES_MOVING_PLATFORM and curState.relYPos + 10 == o.yPos:
                 return o, True
         return None, False
 
@@ -440,27 +417,7 @@ class MarioLandSettings(EnvSettings):
         return powerup
 
     def observation(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> Any:
-        gameArea = getGameArea(self.pyboy, self.tileSet, curState)
-
-        # flatten the game area array so it's Box compatible
-        flatObs = np.concatenate(gameArea.tolist(), axis=None, dtype=np.int32)
-
-        # add other features
-        return np.append(
-            flatObs,
-            [
-                curState.powerupStatus,
-                curState.hasStar,
-                curState.invincibleTimer,
-                curState.xPos,
-                curState.yPos,
-                curState.xPos - prevState.xPos,
-                curState.yPos - prevState.yPos,
-            ],
-        )
-
-    def entityObs(self, prevState: MarioLandGameState, curState: MarioLandGameState):
-        pass
+        return getStackedObservation(self.pyboy, self.tileSet, self.observationCaches, prevState, curState)
 
     def terminated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
         return self._isDead(curState)
@@ -501,20 +458,15 @@ class MarioLandSettings(EnvSettings):
         return actions, Discrete(len(actions))
 
     def observationSpace(self) -> Space:
-        # game area
-        size = GAME_AREA_HEIGHT * GAME_AREA_WIDTH
-        b = Box(low=0, high=TILES, shape=(size,))
-        # add space for powerup status, is invincible, star timer,
-        # x and y pos, x and y speed
-        # TODO: add x, y acceleration
-        low = np.append(b.low, [0, 0, 0, 0, 0, -2, -4])
-        high = np.append(b.high, [3, 1, 1000, 5000, 255, 2, 4])
-        return Box(low=low, high=high, dtype=np.int32)
+        return observationSpace()
+
+    def normalize(self) -> (bool, bool):
+        return False, True
 
     def hyperParameters(self, algo: str) -> Dict[str, Any]:
         match algo:
             case "ppo":
-                return ppoConfig
+                return PPO_HYPERPARAMS
             case _:
                 return {}
 
@@ -533,7 +485,7 @@ class MarioLandSettings(EnvSettings):
     def printGameState(self, prevState: MarioLandGameState, curState: MarioLandGameState):
         objects = ""
         for i, o in enumerate(curState.objects):
-            objects += f"{i}: {o.typeID} {o.relXPos} {o.relYPos}\n"
+            objects += f"{i}: {o.typeID} {o.xPos} {o.yPos}\n"
 
         s = f"""
 Max level progress: {curState.levelProgressMax}

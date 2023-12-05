@@ -8,6 +8,7 @@ LEVEL_BLOCK_MEM_VAL = 0xC0AB
 MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
 MARIO_X_POS_MEM_VAL = 0xC202
 MARIO_Y_POS_MEM_VAL = 0xC201
+WORLD_LEVEL_MEM_VAL = 0xFFB4
 STATUS_TIMER_MEM_VAL = 0xFFA6
 DEAD_JUMP_TIMER_MEM_VAL = 0xC0AC
 MARIO_ON_GROUND_MEM_VAL = 0xC20A
@@ -43,7 +44,7 @@ class MarioLandGameState(GameState):
         # Find the real level progress x
         levelBlock = pyboy.get_memory_value(LEVEL_BLOCK_MEM_VAL)
         self.relXPos = pyboy.get_memory_value(MARIO_X_POS_MEM_VAL)
-        scx = pyboy.botsupport_manager().screen().tilemap_position_list()[16][0]
+        scx = pyboy.get_memory_value(0xFF43)
         real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
         self.xPos = levelBlock * 16 + real + self.relXPos
 
@@ -55,7 +56,8 @@ class MarioLandGameState(GameState):
         self.ySpeed = 0
 
         self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
-        self.world = self.gameWrapper.world
+        world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
+        self.world = (world >> 4, world & 0x0F)
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
         self.deadJumpTimer = self.pyboy.get_memory_value(DEAD_JUMP_TIMER_MEM_VAL)
         self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
@@ -73,7 +75,7 @@ class MarioLandGameState(GameState):
             xPos = levelBlock * 16 + real + relXPos
             relYPos = self.pyboy.get_memory_value(addr + 0x2)
             yPos = convertYPos(relYPos)
-            self.objects.append(MarioLandObject(i, objType, xPos, yPos))
+            self.objects.append(MarioLandObject(i, objType, relXPos, xPos, yPos))
 
             if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
                 self.bossActive = True
@@ -118,8 +120,9 @@ def convertYPos(relYPos: int) -> int:
 
 
 class MarioLandObject:
-    def __init__(self, index, typeID, x, y) -> None:
+    def __init__(self, index, typeID, relX, x, y) -> None:
         self.index = index
         self.typeID = typeID
+        self.relXPos = relX
         self.xPos = x
         self.yPos = y
