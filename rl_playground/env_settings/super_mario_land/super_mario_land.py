@@ -70,7 +70,6 @@ class MarioLandSettings(EnvSettings):
         self.levelChooseProbs = [chooseProb for _ in range(len(self.levelCheckpointRewards))]
 
         self.onGroundFor = 0
-        self.movingPlatformJumpState = None
 
         # so level progress max will be set
         self.gameWrapper.start_game()
@@ -240,10 +239,6 @@ class MarioLandSettings(EnvSettings):
             self.onGroundFor += 1
         onGround = self.onGroundFor == 2
 
-        # reward jumping from moving platform to another block mario
-        # can stand on, but don't reward jumping on the same moving platform
-        movingPlatform = self._handleMovingPlatform(onGround, prevState, curState)
-
         # in world 3 reward standing on bouncing boulders to encourage
         # waiting for them to fall and ride on them instead of immediately
         # jumping into spikes, but only if the boulders are moving to the
@@ -287,67 +282,9 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = clock + movement + movingPlatform + standingOnBoulder + checkpoint + powerup + boss
+        reward = clock + movement + standingOnBoulder + checkpoint + powerup + boss
 
         return reward, curState
-
-    def _handleMovingPlatform(
-        self,
-        onGround: bool,
-        prevState: MarioLandGameState,
-        curState: MarioLandGameState,
-    ) -> float:
-        if onGround and self.movingPlatformJumpState != None:
-            jumpPlatformObj = self.movingPlatformJumpState.movingPlatformObj
-            landPlatformObj, onMovingPlatform = self._standingOnMovingPlatform(curState)
-            jumpPlatformWidth = 30
-            if jumpPlatformObj.typeID in (58, 59):
-                jumpPlatformWidth = 20
-
-            # only reward landing from a moving platform if mario made
-            # forward progress to prevent rewarding from jumping backwards
-            # or continually jumping from the same platform
-            if curState.levelProgressMax > self.movingPlatformJumpState.levelProgressMax:
-                # Only reward jumping from a moving platform and landing
-                # on one if it's a different one, or more than 30 units
-                # were traveled. If mario jumps fast enough the platform
-                # he jumped off of may go off screen and be removed from
-                # the object list, and if he lands on a platform of the
-                # same type it'll have the same object index and type.
-                # In this case ensure more distance has been traveled than
-                # the width of the platform.
-                if onMovingPlatform and (
-                    (
-                        jumpPlatformObj.index != landPlatformObj.index
-                        or jumpPlatformObj.typeID != landPlatformObj.typeID
-                    )
-                    or curState.xPos - self.movingPlatformJumpState.xPos > jumpPlatformWidth
-                ):
-                    self.movingPlatformJumpState = None
-                    return MOVING_PLATFORM_REWARD
-                # reward landing on ground
-                elif not onMovingPlatform:
-                    self.movingPlatformJumpState = None
-                    return MOVING_PLATFORM_REWARD
-        elif onGround and self.movingPlatformJumpState == None:
-            platformObj, onMovingPlatform = self._standingOnMovingPlatform(curState)
-            if onMovingPlatform:
-                curState.movingPlatformObj = platformObj
-        elif (
-            not curState.onGround
-            and self.movingPlatformJumpState is None
-            and prevState.movingPlatformObj is not None
-        ):
-            self.movingPlatformJumpState = curState
-            self.movingPlatformJumpState.movingPlatformObj = prevState.movingPlatformObj
-
-        return 0
-
-    def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> (MarioLandObject | None, bool):
-        for o in curState.objects:
-            if o.typeID in OBJ_TYPES_MOVING_PLATFORM and curState.relYPos + 10 == o.yPos:
-                return o, True
-        return None, False
 
     def _standingOnTiles(self, tiles: List[int]) -> bool:
         sprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(tiles, on_screen=True)
