@@ -25,15 +25,14 @@ BOSS1_TYPE = 8
 BOSS2_TYPE = 50
 
 STATUS_SMALL = 0
-STATUS_BIG = 1
-STATUS_FIRE = 2
+STATUS_GROWING = 1
+STATUS_BIG = 2
+STATUS_FIRE = 3
 
 TIMER_DEATH = 0x90
 TIMER_LEVEL_CLEAR = 0xF0
 STAR_TIME = 956
 SHRINK_TIME = 0x50 + 0x40
-
-OBJ_TYPES_MOVING_PLATFORM = (10, 11, 56, 57, 58, 59)
 
 
 class MarioLandGameState(GameState):
@@ -69,13 +68,15 @@ class MarioLandGameState(GameState):
         for i in range(10):
             addr = OBJECTS_START_MEM_VAL | (i * 0x10)
             objType = self.pyboy.get_memory_value(addr)
-            if objType == 255:
+            if objType == 255 or objType not in typeIDMap:
                 continue
+
             relXPos = self.pyboy.get_memory_value(addr + 0x3)
             xPos = levelBlock * 16 + real + relXPos
             relYPos = self.pyboy.get_memory_value(addr + 0x2)
             yPos = convertYPos(relYPos)
-            self.objects.append(MarioLandObject(i, objType, relXPos, xPos, yPos))
+            objType = typeIDMap[objType]
+            self.objects.append(MarioLandObject(objType, relXPos, xPos, yPos))
 
             if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
                 self.bossActive = True
@@ -84,8 +85,10 @@ class MarioLandGameState(GameState):
         powerupStatus = self.pyboy.get_memory_value(POWERUP_STATUS_MEM_VAL)
         hasFireFlower = self.pyboy.get_memory_value(HAS_FIRE_FLOWER_MEM_VAL)
         starTimer = self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)
+        processingObj = self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)
 
         self.powerupStatus = STATUS_SMALL
+        self.gotMushroom = False
         self.gotStar = False
         self.hasStar = False
         self.isInvincible = False
@@ -93,10 +96,10 @@ class MarioLandGameState(GameState):
         if starTimer != 0:
             self.hasStar = True
             self.isInvincible = True
-            if self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL) == OBJ_TYPE_STAR:
+            if processingObj == OBJ_TYPE_STAR:
                 self.gotStar = True
         elif powerupStatus == 1:
-            self.powerupStatus = STATUS_BIG
+            self.powerupStatus = STATUS_GROWING
         elif powerupStatus == 2:
             if hasFireFlower:
                 self.powerupStatus = STATUS_FIRE
@@ -109,20 +112,60 @@ class MarioLandGameState(GameState):
 def convertYPos(relYPos: int) -> int:
     yPos = 0
 
-    # 185 is lowest y pos before mario is dead, y coordinate is flipped, 0 is higher than 1
-    if relYPos <= 185:
-        yPos = 185 - relYPos
+    # 191 is lowest y pos for an entity (that I've seen), y coordinate
+    # is flipped, 0 is higher than 1
+    if relYPos <= 191:
+        yPos = 191 - relYPos
     else:
         # handle underflow
-        yPos = 185 + (256 - relYPos)
+        yPos = 191 + (256 - relYPos)
 
     return yPos
 
 
+_typeIDs = [
+    ((0x0,), 2),  # goomba
+    ((0x2, 0x55), 3),  # pirana plant
+    ((0x4,), 4),  # koopa
+    ((0x5,), 5),  # koopa bomb
+    ((0x8,), 6),  # sphinx boss
+    ((0x9,), 7),  # spitting plant
+    ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), 8),  # moving platforms
+    ((0xC, 0x35), 9),  # crush blocks
+    ((0xE,), 10),  # moth/jumping spider
+    ((0x10,), 11),  # fish
+    ((0x13, 0x14), 12),  # lift blocks
+    ((0x16, 0x17, 0x18), 13),  # robot
+    ((0x1E, 0x23, 0x45, 0x51), 14),  # projectiles
+    ((0x24,), 15),  # seahorse
+    ((0x25,), 16),  # falling spider
+    ((0x27,), 17),  # explosion?
+    ((0x28, 0x29), 18),  # mushroom
+    ((0x2D, 0x2E), 19),  # fire flower
+    ((0x31,), 20),  # fist rock
+    ((0x32,), 21),  # fist rock boss
+    ((0x33, 0x47), 22),  # bouncing boulder
+    ((0x34,), 23),  # star
+    ((0x3C,), 24),  # flying rock
+    ((0x3F,), 25),  # sphinx/dragon
+    ((0x42,), 26),  # flying moth
+    ((0x49,), 27),  # bill launcher
+    ((0x4B,), 28),  # bullet bill | and 0x4A?
+    ((0x56, 0x57), 29),  # zombie
+]
+
+typeIDMap = {}
+for gameIDs, obsID in _typeIDs:
+    for gameID in gameIDs:
+        typeIDMap[gameID] = obsID
+
+
 class MarioLandObject:
-    def __init__(self, index, typeID, relX, x, y) -> None:
-        self.index = index
+    def __init__(self, typeID, relX, x, y) -> None:
         self.typeID = typeID
         self.relXPos = relX
         self.xPos = x
         self.yPos = y
+        # will be set later
+        self.xSpeed = 0
+        self.ySpeed = 0

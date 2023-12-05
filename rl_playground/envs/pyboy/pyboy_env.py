@@ -98,13 +98,13 @@ class PyBoyEnv(Env):
         pyboyDone = self.pyboy.tick()
         reward, curGameState = self.envSettings.reward(self.prevGameState)
 
-        if self.isPlaytest:
-            self.envSettings.printGameState(self.prevGameState, curGameState)
-
         obs = self.envSettings.observation(self.prevGameState, curGameState)
         terminated = pyboyDone or self.envSettings.terminated(self.prevGameState, curGameState)
         truncated = self.envSettings.truncated(self.prevGameState, curGameState)
         info = self.envSettings.info(self.prevGameState)
+
+        if self.isPlaytest:
+            self.envSettings.printGameState(self.prevGameState, curGameState)
 
         self.prevGameState = curGameState
 

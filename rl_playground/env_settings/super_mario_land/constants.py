@@ -3,11 +3,20 @@ ENTITY_ID_OBS = "entityID"
 ENTITY_INFO_OBS = "entityInfo"
 SCALAR_OBS = "scalar"
 
-MAX_X_SPEED = 5
-MAX_Y_SPEED = 6
+ENTITY_INFO_SIZE = 8
+SCALAR_SIZE = 6
 
-# TODO: update
-MAX_ENTITY_ID = 255
+MARIO_MAX_X_SPEED = 5
+MARIO_MAX_Y_SPEED = 6
+ENTITY_MAX_X_SPEED = 10
+ENTITY_MAX_Y_SPEED = 12
+# distance between 0, 0 and 160, 210 is 264.007... so rounding up
+MAX_EUCLIDEAN_DISTANCE = 265
+
+POWERUP_STATUSES = 4
+MAX_INVINCIBILITY_TIME = 960
+
+MAX_ENTITY_ID = 30
 
 # max number of objects that can be on screen at once (excluding mario)
 N_OBJECTS = 10
@@ -16,7 +25,7 @@ N_ENTITIES = N_OBJECTS + 1
 
 MAX_REL_X_POS = 160
 MAX_X_POS = 3880
-MAX_Y_POS = 200
+MAX_Y_POS = 210
 
 # Game area dimensions
 GAME_AREA_HEIGHT = 16

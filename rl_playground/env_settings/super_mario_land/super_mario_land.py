@@ -11,7 +11,7 @@ from gymnasium.spaces import Discrete, Space
 from pyboy import PyBoy, WindowEvent
 
 from rl_playground.env_settings.env_settings import EnvSettings
-from rl_playground.env_settings.super_mario_land.constants import MAX_X_SPEED
+from rl_playground.env_settings.super_mario_land.constants import MARIO_MAX_X_SPEED
 from rl_playground.env_settings.super_mario_land.game_area import bouncing_boulder_tiles, worldTilesets
 from rl_playground.env_settings.super_mario_land.observation import (
     combineObservations,
@@ -227,7 +227,7 @@ class MarioLandSettings(EnvSettings):
         # increased making the X position wildly jump again. Until I
         # figure out how to properly fix this, just use the previous
         # X position if the position difference is too large to be normal.
-        if abs(curState.xPos - prevState.xPos) > MAX_X_SPEED:
+        if abs(curState.xPos - prevState.xPos) > MARIO_MAX_X_SPEED:
             curState.xPos = prevState.xPos
         movement = (curState.xPos - prevState.xPos) * MOVEMENT_REWARD_COEF
 
@@ -336,6 +336,9 @@ class MarioLandSettings(EnvSettings):
             if prevState.powerupStatus == STATUS_SMALL:
                 # mario got a mushroom
                 powerup = MUSHROOM_REWARD
+            elif prevState.powerupStatus == STATUS_GROWING and curState.powerupStatus == STATUS_SMALL:
+                # mario got hit while growing from a mushroom
+                powerup = HIT_PUNISHMENT
             elif prevState.powerupStatus == STATUS_BIG:
                 if curState.powerupStatus == STATUS_FIRE:
                     powerup = FLOWER_REWARD
@@ -422,7 +425,7 @@ class MarioLandSettings(EnvSettings):
     def printGameState(self, prevState: MarioLandGameState, curState: MarioLandGameState):
         objects = ""
         for i, o in enumerate(curState.objects):
-            objects += f"{i}: {o.typeID} {o.xPos} {o.yPos}\n"
+            objects += f"{i}: {o.typeID} {o.xPos} {o.yPos} {o.xSpeed} {o.ySpeed}\n"
 
         s = f"""
 Max level progress: {curState.levelProgressMax}

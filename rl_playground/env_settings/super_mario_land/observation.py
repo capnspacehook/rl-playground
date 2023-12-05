@@ -1,3 +1,4 @@
+import math
 from typing import Any, Deque, Dict, Tuple
 
 from gymnasium import spaces
@@ -8,7 +9,7 @@ from gymnasium.wrappers.frame_stack import FrameStack
 
 from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import getGameArea
-from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState
+from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState, MarioLandObject
 from rl_playground.env_settings.super_mario_land.settings import N_STACK
 
 
@@ -19,8 +20,10 @@ def observationSpace() -> spaces.Space:
                 low=0, high=MAX_TILE, shape=(N_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
             ),
             ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_STACK, N_ENTITIES), dtype=np.uint8),
-            ENTITY_INFO_OBS: spaces.Box(low=0, high=1, shape=(N_STACK, N_ENTITIES, 6), dtype=np.float32),
-            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(N_STACK, 5), dtype=np.float32),
+            ENTITY_INFO_OBS: spaces.Box(
+                low=0, high=1, shape=(N_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
+            ),
+            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(N_STACK, SCALAR_SIZE), dtype=np.float32),
         }
     )
 
@@ -79,9 +82,8 @@ def getEntityIDsAndInfo(
     # the first ID is always mario
     ids[0] = 1
     if len(curState.objects) != 0:
-        for i in range(1, len(curState.objects)):
-            # TODO: coalesce typeID to curated list
-            ids[i] = curState.objects[i - 1].typeID
+        for i in range(len(curState.objects)):
+            ids[i + 1] = curState.objects[i].typeID
 
     # TODO: maybe make these an average over multiple frames?
     # pass in a list of game states maybe?
@@ -90,32 +92,65 @@ def getEntityIDsAndInfo(
     xAccel = curState.xSpeed - prevState.xSpeed
     yAccel = curState.ySpeed - prevState.ySpeed
 
-    entities = np.zeros((N_ENTITIES, 6), dtype=np.float32)
+    # TODO: separate mario from other entities?
+    entities = np.zeros((N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32)
     entities[0] = np.array(
         [
             scaledEncoding(curState.xPos, MAX_X_POS, True),
             scaledEncoding(curState.yPos, MAX_Y_POS, True),
-            scaledEncoding(curState.xSpeed, MAX_X_SPEED, False),
-            scaledEncoding(curState.ySpeed, MAX_Y_SPEED, False),
-            scaledEncoding(xAccel, MAX_X_SPEED * 2, False),
-            scaledEncoding(yAccel, MAX_Y_SPEED * 2, False),
+            0,  # euclidean distance to self is always 0
+            scaledEncoding(curState.xSpeed, MARIO_MAX_X_SPEED, False),
+            scaledEncoding(curState.ySpeed, MARIO_MAX_Y_SPEED, False),
+            scaledEncoding(xAccel, MARIO_MAX_X_SPEED * 2, False),
+            scaledEncoding(yAccel, MARIO_MAX_Y_SPEED * 2, False),
+            scaledEncoding(math.atan2(curState.xSpeed, curState.ySpeed), math.pi, False),
         ]
     )
+    marioPos = np.array((curState.xPos, curState.yPos))
     if len(curState.objects) != 0:
-        for i in range(1, len(curState.objects)):
-            obj = curState.objects[i - 1]
+        for i in range(len(curState.objects)):
+            obj = curState.objects[i]
+            xAccel = 0
+            yAccel = 0
+
+            # attempt to find the same object in the previous frame's state
+            # so the speed and acceleration can be calculated
+            if len(prevState.objects) != 0:
+                prevObj: MarioLandObject = None
+                prevObjs = [
+                    po
+                    for po in prevState.objects
+                    if obj.typeID == po.typeID
+                    and abs(obj.xPos - po.xPos) <= ENTITY_MAX_X_SPEED
+                    and abs(obj.yPos - po.yPos) <= ENTITY_MAX_Y_SPEED
+                ]
+                if len(prevObjs) == 1:
+                    prevObj = prevObjs[0]
+                if len(prevObjs) > 1:
+                    prevObj = min(prevObjs, key=lambda po: abs(obj.xPos - po.xPos) + abs(obj.yPos - po.yPos))
+
+                if prevObj is not None:
+                    obj.xSpeed = obj.xPos - prevObj.xPos
+                    obj.ySpeed = obj.yPos - prevObj.yPos
+                    xAccel = obj.xSpeed - prevObj.xSpeed
+                    yAccel = obj.ySpeed - prevObj.ySpeed
+
+            # calculate speed for offscreen objects for when they come
+            # onscreen but don't add them to the observation
             if obj.relXPos > MAX_REL_X_POS or obj.yPos > MAX_Y_POS:
                 continue
 
-            entities[i] = np.array(
+            euclideanDistance = np.linalg.norm(marioPos - np.array((obj.xPos, obj.yPos)))
+            entities[i + 1] = np.array(
                 [
                     scaledEncoding(obj.xPos, MAX_X_POS, True),
                     scaledEncoding(obj.yPos, MAX_Y_POS, True),
-                    # TODO: calculate speeds and accels with prevState
-                    0,
-                    0,
-                    0,
-                    0,
+                    scaledEncoding(euclideanDistance, MAX_EUCLIDEAN_DISTANCE, True),
+                    scaledEncoding(obj.xSpeed, ENTITY_MAX_X_SPEED, False),
+                    scaledEncoding(obj.ySpeed, ENTITY_MAX_Y_SPEED, False),
+                    scaledEncoding(xAccel, ENTITY_MAX_X_SPEED * 2, False),
+                    scaledEncoding(yAccel, ENTITY_MAX_Y_SPEED * 2, False),
+                    scaledEncoding(math.atan2(obj.xSpeed, obj.ySpeed), math.pi, False),
                 ]
             )
 
@@ -126,9 +161,11 @@ def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
     return np.array(
         np.concatenate(
             (
-                oneHotEncoding(curState.powerupStatus, 3),
+                oneHotEncoding(curState.powerupStatus, POWERUP_STATUSES),
                 np.array([float(curState.hasStar)], dtype=np.float32),
-                np.array([scaledEncoding(curState.invincibleTimer, 960, True)], dtype=np.float32),
+                np.array(
+                    [scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True)], dtype=np.float32
+                ),
             ),
         )
     )
