@@ -51,8 +51,12 @@ class MarioLandGameState(GameState):
         self.yPos = convertYPos(self.relYPos)
 
         # will be set later
-        self.xSpeed = 0
-        self.ySpeed = 0
+        self.rawXSpeed = 0
+        self.rawYSpeed = 0
+        self.meanXSpeed = 0
+        self.meanYSpeed = 0
+        self.xAccel = 0
+        self.yAccel = 0
 
         self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
         world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
@@ -136,7 +140,7 @@ _typeIDs = [
     ((0x10,), 11),  # fish
     ((0x13, 0x14), 12),  # lift blocks
     ((0x16, 0x17, 0x18), 13),  # robot
-    ((0x1E, 0x23, 0x45, 0x51), 14),  # projectiles
+    ((0x1E, 0x23, 0x45, 0x51, 0x54), 14),  # projectiles
     ((0x24,), 15),  # seahorse
     ((0x25,), 16),  # falling spider
     ((0x27,), 17),  # explosion?
@@ -166,6 +170,11 @@ class MarioLandObject:
         self.relXPos = relX
         self.xPos = x
         self.yPos = y
+
         # will be set later
-        self.xSpeed = 0
-        self.ySpeed = 0
+        self.rawXSpeed = 0
+        self.rawYSpeed = 0
+        self.meanXSpeed = 0
+        self.meanYSpeed = 0
+        self.xAccel = 0
+        self.yAccel = 0

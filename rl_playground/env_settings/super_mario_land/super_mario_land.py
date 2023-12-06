@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Any, Dict, List
+from typing import Any, Deque, Dict, List
 from os import listdir
 from os.path import basename, isfile, join, splitext
 import random
@@ -33,11 +33,12 @@ class MarioLandSettings(EnvSettings):
         self.pyboy = pyboy
         self.gameWrapper = self.pyboy.game_wrapper()
 
+        self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
         self.observationCaches = [
-            deque(maxlen=N_STACK),
-            deque(maxlen=N_STACK),
-            deque(maxlen=N_STACK),
-            deque(maxlen=N_STACK),
+            deque(maxlen=N_OBS_STACK),
+            deque(maxlen=N_OBS_STACK),
+            deque(maxlen=N_OBS_STACK),
+            deque(maxlen=N_OBS_STACK),
         ]
 
         self.isEval = isEval
@@ -105,12 +106,17 @@ class MarioLandSettings(EnvSettings):
 
         curState = self._loadLevel()
 
+        # reset the game state cache
+        [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
+
         # reset the observation cache
-        gameArea, entityID, entityInfo, scalar = getObservations(self.pyboy, self.tileSet, curState, curState)
-        [self.observationCaches[0].append(gameArea) for _ in range(N_STACK)]
-        [self.observationCaches[1].append(entityID) for _ in range(N_STACK)]
-        [self.observationCaches[2].append(entityInfo) for _ in range(N_STACK)]
-        [self.observationCaches[3].append(scalar) for _ in range(N_STACK)]
+        gameArea, entityID, entityInfo, scalar = getObservations(
+            self.pyboy, self.tileSet, self.gameStateCache
+        )
+        [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[1].append(entityID) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[2].append(entityInfo) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[3].append(scalar) for _ in range(N_OBS_STACK)]
 
         return combineObservations(self.observationCaches), curState, True
 
@@ -162,7 +168,7 @@ class MarioLandSettings(EnvSettings):
                     # set star song so timer functions correctly
                     self.pyboy.set_memory_value(0xDFE8, 0x0C)
                 if randPowerup != STATUS_SMALL:
-                    self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, STATUS_BIG)
+                    self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
                     if randPowerup > 2:
                         self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
 
@@ -191,6 +197,7 @@ class MarioLandSettings(EnvSettings):
 
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()
+        self.gameStateCache.append(curState)
 
         # return flat punishment on mario's death
         if self._isDead(curState):
@@ -357,7 +364,7 @@ class MarioLandSettings(EnvSettings):
         return powerup
 
     def observation(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> Any:
-        return getStackedObservation(self.pyboy, self.tileSet, self.observationCaches, prevState, curState)
+        return getStackedObservation(self.pyboy, self.tileSet, self.observationCaches, self.gameStateCache)
 
     def terminated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
         return self._isDead(curState)
@@ -398,7 +405,7 @@ class MarioLandSettings(EnvSettings):
         return actions, Discrete(len(actions))
 
     def observationSpace(self) -> Space:
-        return observationSpace()
+        return observationSpace
 
     def normalize(self) -> (bool, bool):
         return False, True
@@ -425,7 +432,7 @@ class MarioLandSettings(EnvSettings):
     def printGameState(self, prevState: MarioLandGameState, curState: MarioLandGameState):
         objects = ""
         for i, o in enumerate(curState.objects):
-            objects += f"{i}: {o.typeID} {o.xPos} {o.yPos} {o.xSpeed} {o.ySpeed}\n"
+            objects += f"{i}: {o.typeID} {o.xPos} {o.yPos} {round(o.meanXSpeed,3)} {round(o.meanYSpeed,3)} {round(o.xAccel,3)} {round(o.yAccel,3)}\n"
 
         s = f"""
 Max level progress: {curState.levelProgressMax}
@@ -433,7 +440,7 @@ Powerup: {curState.powerupStatus}
 Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
 X, Y: {curState.xPos}, {curState.yPos}
 Rel X, Y {curState.relXPos} {curState.relYPos}
-Speeds: {curState.xPos - prevState.xPos} {curState.yPos - prevState.yPos}
+Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed,3)} {round(curState.xAccel,3)} {round(curState.yAccel,3)}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
 Object type: {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
 Boss: {curState.bossActive} {curState.bossHealth}

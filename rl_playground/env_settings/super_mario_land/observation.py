@@ -1,5 +1,5 @@
 import math
-from typing import Any, Deque, Dict, Tuple
+from typing import Any, Deque, Dict, List, Tuple
 
 from gymnasium import spaces
 import numpy as np
@@ -10,32 +10,30 @@ from gymnasium.wrappers.frame_stack import FrameStack
 from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import getGameArea
 from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState, MarioLandObject
-from rl_playground.env_settings.super_mario_land.settings import N_STACK
+from rl_playground.env_settings.super_mario_land.settings import N_OBS_STACK, N_STATE_STACK
 
 
-def observationSpace() -> spaces.Space:
-    return spaces.Dict(
-        {
-            GAME_AREA_OBS: spaces.Box(
-                low=0, high=MAX_TILE, shape=(N_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
-            ),
-            ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_STACK, N_ENTITIES), dtype=np.uint8),
-            ENTITY_INFO_OBS: spaces.Box(
-                low=0, high=1, shape=(N_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
-            ),
-            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(N_STACK, SCALAR_SIZE), dtype=np.float32),
-        }
-    )
+observationSpace = spaces.Dict(
+    {
+        GAME_AREA_OBS: spaces.Box(
+            low=0, high=MAX_TILE, shape=(N_OBS_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
+        ),
+        ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_OBS_STACK, N_ENTITIES), dtype=np.uint8),
+        ENTITY_INFO_OBS: spaces.Box(
+            low=0, high=1, shape=(N_OBS_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
+        ),
+        SCALAR_OBS: spaces.Box(low=0, high=1, shape=(N_OBS_STACK, SCALAR_SIZE), dtype=np.float32),
+    }
+)
 
 
 def getStackedObservation(
     pyboy: PyBoy,
     tileSet: np.ndarray,
     obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]],
-    prevState: MarioLandGameState,
-    curState: MarioLandGameState,
+    states: Deque[MarioLandGameState],
 ) -> Dict[str, Any]:
-    gameArea, entityIDs, entityInfos, scalar = getObservations(pyboy, tileSet, prevState, curState)
+    gameArea, entityIDs, entityInfos, scalar = getObservations(pyboy, tileSet, states)
 
     obsCache[0].append(gameArea)
     obsCache[1].append(entityIDs)
@@ -48,13 +46,12 @@ def getStackedObservation(
 def getObservations(
     pyboy: PyBoy,
     tileSet: np.ndarray,
-    prevState: MarioLandGameState,
-    curState: MarioLandGameState,
+    states: Deque[MarioLandGameState],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     return (
-        getGameArea(pyboy, tileSet, curState),
-        *getEntityIDsAndInfo(prevState, curState),
-        getScalarFeatures(curState),
+        getGameArea(pyboy, tileSet, states[-1]),
+        *getEntityIDsAndInfo(states),
+        getScalarFeatures(states[-1]),
     )
 
 
@@ -70,9 +67,11 @@ def combineObservations(
 
 
 def getEntityIDsAndInfo(
-    prevState: MarioLandGameState,
-    curState: MarioLandGameState,
+    states: Deque[MarioLandGameState],
 ) -> Tuple[np.ndarray, np.ndarray]:
+    prevState = states[-2]
+    curState = states[-1]
+
     # a level was completed on the last step, discard the last step's
     # state to avoid incorrect speed and acceleration calculations
     if prevState.world != curState.world:
@@ -85,12 +84,13 @@ def getEntityIDsAndInfo(
         for i in range(len(curState.objects)):
             ids[i + 1] = curState.objects[i].typeID
 
-    # TODO: maybe make these an average over multiple frames?
-    # pass in a list of game states maybe?
-    curState.xSpeed = curState.xPos - prevState.xPos
-    curState.ySpeed = curState.yPos - prevState.yPos
-    xAccel = curState.xSpeed - prevState.xSpeed
-    yAccel = curState.ySpeed - prevState.ySpeed
+    curState.rawXSpeed = curState.xPos - prevState.xPos
+    curState.rawYSpeed = curState.yPos - prevState.yPos
+
+    curState.meanXSpeed = np.mean([s.rawXSpeed for s in states])
+    curState.meanYSpeed = np.mean([s.rawYSpeed for s in states])
+    curState.xAccel = curState.meanXSpeed - prevState.meanXSpeed
+    curState.yAccel = curState.meanYSpeed - prevState.meanYSpeed
 
     # TODO: separate mario from other entities?
     entities = np.zeros((N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32)
@@ -99,41 +99,30 @@ def getEntityIDsAndInfo(
             scaledEncoding(curState.xPos, MAX_X_POS, True),
             scaledEncoding(curState.yPos, MAX_Y_POS, True),
             0,  # euclidean distance to self is always 0
-            scaledEncoding(curState.xSpeed, MARIO_MAX_X_SPEED, False),
-            scaledEncoding(curState.ySpeed, MARIO_MAX_Y_SPEED, False),
-            scaledEncoding(xAccel, MARIO_MAX_X_SPEED * 2, False),
-            scaledEncoding(yAccel, MARIO_MAX_Y_SPEED * 2, False),
-            scaledEncoding(math.atan2(curState.xSpeed, curState.ySpeed), math.pi, False),
+            scaledEncoding(curState.meanXSpeed, MARIO_MAX_X_SPEED, False),
+            scaledEncoding(curState.meanYSpeed, MARIO_MAX_Y_SPEED, False),
+            scaledEncoding(curState.xAccel, MARIO_MAX_X_SPEED, False),
+            scaledEncoding(curState.yAccel, MARIO_MAX_Y_SPEED, False),
+            scaledEncoding(math.atan2(curState.meanXSpeed, curState.meanYSpeed), math.pi, False),
         ]
     )
     marioPos = np.array((curState.xPos, curState.yPos))
     if len(curState.objects) != 0:
         for i in range(len(curState.objects)):
             obj = curState.objects[i]
-            xAccel = 0
-            yAccel = 0
 
             # attempt to find the same object in the previous frame's state
             # so the speed and acceleration can be calculated
             if len(prevState.objects) != 0:
-                prevObj: MarioLandObject = None
-                prevObjs = [
-                    po
-                    for po in prevState.objects
-                    if obj.typeID == po.typeID
-                    and abs(obj.xPos - po.xPos) <= ENTITY_MAX_X_SPEED
-                    and abs(obj.yPos - po.yPos) <= ENTITY_MAX_Y_SPEED
-                ]
-                if len(prevObjs) == 1:
-                    prevObj = prevObjs[0]
-                if len(prevObjs) > 1:
-                    prevObj = min(prevObjs, key=lambda po: abs(obj.xPos - po.xPos) + abs(obj.yPos - po.yPos))
-
+                prevObj = findObjectInPrevState(obj, prevState)
                 if prevObj is not None:
-                    obj.xSpeed = obj.xPos - prevObj.xPos
-                    obj.ySpeed = obj.yPos - prevObj.yPos
-                    xAccel = obj.xSpeed - prevObj.xSpeed
-                    yAccel = obj.ySpeed - prevObj.ySpeed
+                    obj.rawXSpeed = obj.xPos - prevObj.xPos
+                    obj.rawYSpeed = obj.yPos - prevObj.yPos
+                    rawXSpeeds = [prevObj.rawXSpeed, obj.rawXSpeed]
+                    rawYSpeeds = [prevObj.rawYSpeed, obj.rawYSpeed]
+                    obj.meanXSpeed, obj.meanYSpeed = calculateMeanSpeeds(states, obj, rawXSpeeds, rawYSpeeds)
+                    obj.xAccel = obj.meanXSpeed - prevObj.meanXSpeed
+                    obj.yAccel = obj.meanYSpeed - prevObj.meanYSpeed
 
             # calculate speed for offscreen objects for when they come
             # onscreen but don't add them to the observation
@@ -146,15 +135,50 @@ def getEntityIDsAndInfo(
                     scaledEncoding(obj.xPos, MAX_X_POS, True),
                     scaledEncoding(obj.yPos, MAX_Y_POS, True),
                     scaledEncoding(euclideanDistance, MAX_EUCLIDEAN_DISTANCE, True),
-                    scaledEncoding(obj.xSpeed, ENTITY_MAX_X_SPEED, False),
-                    scaledEncoding(obj.ySpeed, ENTITY_MAX_Y_SPEED, False),
-                    scaledEncoding(xAccel, ENTITY_MAX_X_SPEED * 2, False),
-                    scaledEncoding(yAccel, ENTITY_MAX_Y_SPEED * 2, False),
-                    scaledEncoding(math.atan2(obj.xSpeed, obj.ySpeed), math.pi, False),
+                    scaledEncoding(obj.meanXSpeed, ENTITY_MAX_MEAN_X_SPEED, False),
+                    scaledEncoding(obj.meanYSpeed, ENTITY_MAX_MEAN_Y_SPEED, False),
+                    scaledEncoding(obj.xAccel, ENTITY_MAX_MEAN_X_SPEED, False),
+                    scaledEncoding(obj.yAccel, ENTITY_MAX_MEAN_Y_SPEED, False),
+                    scaledEncoding(math.atan2(obj.meanXSpeed, obj.meanYSpeed), math.pi, False),
                 ]
             )
 
     return (ids, entities)
+
+
+def findObjectInPrevState(obj: MarioLandObject, prevState: MarioLandGameState) -> MarioLandObject | None:
+    prevObj: MarioLandObject = None
+    prevObjs = [
+        po
+        for po in prevState.objects
+        if obj.typeID == po.typeID
+        and abs(obj.xPos - po.xPos) <= ENTITY_MAX_RAW_X_SPEED
+        and abs(obj.yPos - po.yPos) <= ENTITY_MAX_RAW_Y_SPEED
+    ]
+    if len(prevObjs) == 1:
+        prevObj = prevObjs[0]
+    if len(prevObjs) > 1:
+        prevObj = min(prevObjs, key=lambda po: abs(obj.xPos - po.xPos) + abs(obj.yPos - po.yPos))
+
+    return prevObj
+
+
+def calculateMeanSpeeds(
+    states: Deque[MarioLandGameState], obj: MarioLandObject, rawXSpeeds: List[int], rawYSpeeds: List[int]
+) -> (float, float):
+    # we already have the previous and current raw speeds
+    for i in range(N_STATE_STACK - 2):
+        state = states[i]
+        xSpeed = 0
+        ySpeed = 0
+        prevObj = findObjectInPrevState(obj, state)
+        if prevObj is not None:
+            xSpeed = prevObj.rawXSpeed
+            ySpeed = prevObj.rawYSpeed
+        rawXSpeeds.append(xSpeed)
+        rawYSpeeds.append(ySpeed)
+
+    return np.mean(rawXSpeeds), np.mean(rawYSpeeds)
 
 
 def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:

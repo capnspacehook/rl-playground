@@ -15,7 +15,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         self,
         observationSpace: spaces.Dict,
         actLayer: nn.Module = nn.ReLU,
-        cnnHiddenLayers: int = 64,
+        cnnHiddenLayers: int = 128,
         embeddingDimensions: int = 8,
         entityHiddenLayers: int = 64,
     ) -> None:

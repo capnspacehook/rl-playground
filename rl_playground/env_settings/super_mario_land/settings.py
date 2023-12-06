@@ -5,7 +5,8 @@ import torch.nn as nn
 from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtractor
 
 # Observation settings
-N_STACK = 6
+N_OBS_STACK = 6
+N_STATE_STACK = 6
 
 # Reward values
 DEATH_PUNISHMENT = -25
@@ -13,7 +14,7 @@ HIT_PUNISHMENT = -5
 # TODO: linearly increase to encourage progress over speed
 # earlier, then after game mechanics and levels are learned
 # encourage speed more
-CLOCK_PUNISHMENT = -0.01
+CLOCK_PUNISHMENT = -0.1
 MOVEMENT_REWARD_COEF = 1
 MUSHROOM_REWARD = 20
 FLOWER_REWARD = 20
