@@ -95,7 +95,7 @@ class LevelProgress:
     def __init__(self, window: int, progress: int) -> None:
         self.window = window
 
-        self.progresses = deque([progress], maxlen=N_STACK)
+        self.progresses = deque([progress], maxlen=N_OBS_STACK)
         self.average = float(progress)
         self.stdDeviation = 0.0
 
