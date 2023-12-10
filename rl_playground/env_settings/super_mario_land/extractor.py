@@ -40,7 +40,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
             actLayer(),
             nn.Flatten(),
         )
-        cnnOutputSize = _computeShape(gameArea, th.float32, self.gameAreaCNN)
+        cnnOutputSize = _computeShape(gameArea, th.float32, device, self.gameAreaCNN)
         self.gameAreaFC = nn.Sequential(
             nn.Linear(cnnOutputSize, cnnHiddenLayers, device=device),
             actLayer(),
@@ -102,7 +102,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         return allFeatures
 
 
-def _computeShape(space: spaces.Space, dtype: Any, mod: nn.Module) -> int:
+def _computeShape(space: spaces.Space, dtype: Any, device: Any, mod: nn.Module) -> int:
     with th.no_grad():
-        t = th.as_tensor(space.sample()[None]).to(dtype)
+        t = th.as_tensor(space.sample()[None], device=device).to(dtype)
         return mod(t).shape[1]

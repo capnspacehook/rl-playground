@@ -10,7 +10,7 @@ import numpy as np
 import pandas
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.utils import get_device, set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 import torch
 from wandb.integration.sb3 import WandbCallback
@@ -73,7 +73,7 @@ def train(args):
     config = envSettings.hyperParameters(args.algorithm)
     config["device"] = args.device
     if "policy_kwargs" in config and "features_extractor_kwargs" in config["policy_kwargs"]:
-        config["policy_kwargs"]["features_extractor_kwargs"]["device"] = args.device
+        config["policy_kwargs"]["features_extractor_kwargs"]["device"] = get_device(args.device)
 
     # copy config so wandb callback doesn't include extraneous keys set
     # by the algorithm constructor
@@ -133,8 +133,8 @@ def train(args):
         if not args.disable_wandb:
             callbacks.append(WandbCallback(log="parameters"))
 
-        #model.collect_rollouts = torch.compile(model.collect_rollouts, mode="reduce-overhead")
-        #model.train = torch.compile(model.train, mode="reduce-overhead")
+        # model.collect_rollouts = torch.compile(model.collect_rollouts, mode="reduce-overhead")
+        # model.train = torch.compile(model.train, mode="reduce-overhead")
 
         model.learn(
             total_timesteps=args.session_length,
