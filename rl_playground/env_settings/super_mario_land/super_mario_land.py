@@ -35,10 +35,10 @@ class MarioLandSettings(EnvSettings):
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
         self.observationCaches = [
-            deque(maxlen=N_OBS_STACK),
-            deque(maxlen=N_OBS_STACK),
-            deque(maxlen=N_OBS_STACK),
-            deque(maxlen=N_OBS_STACK),
+            deque(maxlen=N_OBS_STACK),  # game area
+            deque(maxlen=N_OBS_STACK),  # mario info
+            deque(maxlen=N_OBS_STACK),  # entity IDs
+            deque(maxlen=N_OBS_STACK),  # entity infos
         ]
 
         self.isEval = isEval
@@ -110,15 +110,15 @@ class MarioLandSettings(EnvSettings):
         [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
 
         # reset the observation cache
-        gameArea, entityID, entityInfo, scalar = getObservations(
+        gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(
             self.pyboy, self.tileSet, self.gameStateCache
         )
         [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[1].append(entityID) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[2].append(entityInfo) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[3].append(scalar) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
 
-        return combineObservations(self.observationCaches), curState, True
+        return combineObservations(self.observationCaches, scalar), curState, True
 
     def _loadLevel(self) -> MarioLandGameState:
         stateFile = self.stateFiles[self.stateIdx]

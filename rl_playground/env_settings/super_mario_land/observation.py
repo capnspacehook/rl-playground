@@ -18,11 +18,12 @@ observationSpace = spaces.Dict(
         GAME_AREA_OBS: spaces.Box(
             low=0, high=MAX_TILE, shape=(N_OBS_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
         ),
+        MARIO_INFO_OBS: spaces.Box(low=0, high=1, shape=(N_OBS_STACK, MARIO_INFO_SIZE), dtype=np.float32),
         ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_OBS_STACK, N_ENTITIES), dtype=np.uint8),
         ENTITY_INFO_OBS: spaces.Box(
-            low=0, high=1, shape=(N_OBS_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float64
+            low=0, high=1, shape=(N_OBS_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
         ),
-        SCALAR_OBS: spaces.Box(low=0, high=1, shape=(N_OBS_STACK, SCALAR_SIZE), dtype=np.float64),
+        SCALAR_OBS: spaces.Box(low=0, high=1, shape=(SCALAR_SIZE,), dtype=np.float32),
     }
 )
 
@@ -33,14 +34,14 @@ def getStackedObservation(
     obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]],
     states: Deque[MarioLandGameState],
 ) -> Dict[str, Any]:
-    gameArea, entityIDs, entityInfos, scalar = getObservations(pyboy, tileSet, states)
+    gameArea, marioInfo, entityIDs, entityInfos, scalar = getObservations(pyboy, tileSet, states)
 
     obsCache[0].append(gameArea)
-    obsCache[1].append(entityIDs)
-    obsCache[2].append(entityInfos)
-    obsCache[3].append(scalar)
+    obsCache[1].append(marioInfo)
+    obsCache[2].append(entityIDs)
+    obsCache[3].append(entityInfos)
 
-    return combineObservations(obsCache)
+    return combineObservations(obsCache, scalar)
 
 
 def getObservations(
@@ -56,19 +57,21 @@ def getObservations(
 
 
 def combineObservations(
-    obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]]
+    obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]],
+    scalar: np.ndarray,
 ) -> Dict[str, Any]:
     return {
         GAME_AREA_OBS: np.squeeze(np.array(obsCache[0])),
-        ENTITY_ID_OBS: np.squeeze(np.array(obsCache[1])),
-        ENTITY_INFO_OBS: np.squeeze(np.array(obsCache[2])),
-        SCALAR_OBS: np.squeeze(np.array(obsCache[3])),
+        MARIO_INFO_OBS: np.squeeze(np.array(obsCache[1])),
+        ENTITY_ID_OBS: np.squeeze(np.array(obsCache[2])),
+        ENTITY_INFO_OBS: np.squeeze(np.array(obsCache[3])),
+        SCALAR_OBS: scalar,
     }
 
 
 def getEntityIDsAndInfo(
     states: Deque[MarioLandGameState],
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     prevState = states[-2]
     curState = states[-1]
 
@@ -85,21 +88,17 @@ def getEntityIDsAndInfo(
     curState.xAccel = curState.meanXSpeed - prevState.meanXSpeed
     curState.yAccel = curState.meanYSpeed - prevState.meanYSpeed
 
-    # TODO: separate mario from other entities?
-    mario = np.array(
+    marioInfo = np.array(
         [
-            [
-                scaledEncoding(curState.relXPos, MAX_REL_X_POS, True),
-                scaledEncoding(curState.yPos, MAX_Y_POS, True),
-                0,  # euclidean distance to self is always 0
-                scaledEncoding(curState.meanXSpeed, MARIO_MAX_X_SPEED, False),
-                scaledEncoding(curState.meanYSpeed, MARIO_MAX_Y_SPEED, False),
-                scaledEncoding(curState.xAccel, MARIO_MAX_X_SPEED, False),
-                scaledEncoding(curState.yAccel, MARIO_MAX_Y_SPEED, False),
-                scaledEncoding(math.atan2(curState.meanXSpeed, curState.meanYSpeed), math.pi, False),
-            ]
+            scaledEncoding(curState.relXPos, MAX_REL_X_POS, True),
+            scaledEncoding(curState.yPos, MAX_Y_POS, True),
+            scaledEncoding(curState.meanXSpeed, MARIO_MAX_X_SPEED, False),
+            scaledEncoding(curState.meanYSpeed, MARIO_MAX_Y_SPEED, False),
+            scaledEncoding(curState.xAccel, MARIO_MAX_X_SPEED, False),
+            scaledEncoding(curState.yAccel, MARIO_MAX_Y_SPEED, False),
+            scaledEncoding(math.atan2(curState.meanXSpeed, curState.meanYSpeed), math.pi, False),
         ],
-        dtype=np.float64,
+        dtype=np.float32,
     )
     marioPos = np.array((curState.xPos, curState.yPos))
 
@@ -143,7 +142,7 @@ def getEntityIDsAndInfo(
                             scaledEncoding(obj.yAccel, ENTITY_MAX_MEAN_Y_SPEED, False),
                             scaledEncoding(math.atan2(obj.meanXSpeed, obj.meanYSpeed), math.pi, False),
                         ],
-                        dtype=np.float64,
+                        dtype=np.float32,
                     ),
                 )
             )
@@ -152,19 +151,17 @@ def getEntityIDsAndInfo(
     sortedEntities = sorted(entities, key=lambda o: o[1][2])
 
     ids = [i[0] for i in sortedEntities]
-    paddingIDs = np.zeros((N_OBJECTS - len(ids)), dtype=np.uint8)
-    # mario will always have the first ID of 1
-    allIDs = np.concatenate(([1], ids, paddingIDs))
+    paddingIDs = np.zeros((N_ENTITIES - len(ids)), dtype=np.uint8)
+    allIDs = np.concatenate((ids, paddingIDs))
 
     entities = [i[1] for i in sortedEntities]
-    paddingEntities = np.zeros((N_OBJECTS - len(entities), ENTITY_INFO_SIZE), dtype=np.float64)
+    paddingEntities = np.zeros((N_ENTITIES - len(entities), ENTITY_INFO_SIZE), dtype=np.float32)
     if len(entities) == 0:
-        entityList = (mario, paddingEntities)
+        allEntities = paddingEntities
     else:
-        entityList = (mario, entities, paddingEntities)
-    allEntities = np.concatenate(entityList)
+        allEntities = np.concatenate((entities, paddingEntities))
 
-    return (allIDs, allEntities)
+    return (marioInfo, allIDs, allEntities)
 
 
 def findObjectInPrevState(obj: MarioLandObject, prevState: MarioLandGameState) -> MarioLandObject | None:
@@ -207,9 +204,9 @@ def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
         np.concatenate(
             (
                 oneHotEncoding(curState.powerupStatus, POWERUP_STATUSES),
-                np.array([float(curState.hasStar)], dtype=np.float64),
+                np.array([float(curState.hasStar)], dtype=np.float32),
                 np.array(
-                    [scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True)], dtype=np.float64
+                    [scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True)], dtype=np.float32
                 ),
             ),
         )
@@ -235,4 +232,4 @@ def scaledEncoding(val: int, max: int, minIsZero: bool) -> float:
 
 
 def oneHotEncoding(val: int, max: int) -> np.ndarray:
-    return np.squeeze(np.identity(max, dtype=np.float64)[val : val + 1])
+    return np.squeeze(np.identity(max, dtype=np.float32)[val : val + 1])

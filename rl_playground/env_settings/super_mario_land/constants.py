@@ -1,8 +1,10 @@
 GAME_AREA_OBS = "gameArea"
+MARIO_INFO_OBS = "marioInfo"
 ENTITY_ID_OBS = "entityID"
 ENTITY_INFO_OBS = "entityInfo"
 SCALAR_OBS = "scalar"
 
+MARIO_INFO_SIZE = 7
 ENTITY_INFO_SIZE = 8
 SCALAR_SIZE = 6
 
@@ -21,9 +23,7 @@ MAX_INVINCIBILITY_TIME = 960
 MAX_ENTITY_ID = 30
 
 # max number of objects that can be on screen at once (excluding mario)
-N_OBJECTS = 10
-# max number of objects that con be on screen at once
-N_ENTITIES = N_OBJECTS + 1
+N_ENTITIES = 10
 
 MAX_REL_X_POS = 160
 MAX_Y_POS = 210
