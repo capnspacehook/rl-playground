@@ -63,7 +63,11 @@ PPO_HYPERPARAMS = {
     "policy_kwargs": dict(
         activation_fn=nn.ReLU,
         features_extractor_class=MarioLandExtractor,
-        net_arch=dict(pi=[512, 512], vf=[512, 512]),
+        features_extractor_kwargs=dict(
+            # will be changed later
+            device="auto",
+        ),
+        net_arch=dict(pi=[1024, 1024], vf=[1024, 1024]),
         normalize_images=False,
     ),
 }

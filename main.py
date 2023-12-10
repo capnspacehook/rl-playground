@@ -72,6 +72,9 @@ def train(args):
 
     config = envSettings.hyperParameters(args.algorithm)
     config["device"] = args.device
+    if "policy_kwargs" in config and "features_extractor_kwargs" in config["policy_kwargs"]:
+        config["policy_kwargs"]["features_extractor_kwargs"]["device"] = args.device
+
     # copy config so wandb callback doesn't include extraneous keys set
     # by the algorithm constructor
     wabConfig = copy.deepcopy(config)
@@ -130,8 +133,8 @@ def train(args):
         if not args.disable_wandb:
             callbacks.append(WandbCallback(log="parameters"))
 
-        model.collect_rollouts = torch.compile(model.collect_rollouts, mode="reduce-overhead")
-        model.train = torch.compile(model.train, mode="reduce-overhead")
+        #model.collect_rollouts = torch.compile(model.collect_rollouts, mode="reduce-overhead")
+        #model.train = torch.compile(model.train, mode="reduce-overhead")
 
         model.learn(
             total_timesteps=args.session_length,

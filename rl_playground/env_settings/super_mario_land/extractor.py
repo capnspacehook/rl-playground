@@ -14,6 +14,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
     def __init__(
         self,
         observationSpace: spaces.Dict,
+        device: str,
         actLayer: nn.Module = nn.ReLU,
         cnnHiddenLayers: int = 128,
         marioHiddenLayers: int = 64,
@@ -31,17 +32,17 @@ class MarioLandExtractor(BaseFeaturesExtractor):
 
         # gameArea (nStack, 16, 20)
         self.gameAreaCNN = nn.Sequential(
-            nn.Conv2d(numStack, 32, kernel_size=2, stride=1, padding=0),
+            nn.Conv2d(numStack, 32, kernel_size=2, stride=1, padding=0, device=device),
             actLayer(),
             # max pool to downsample
             nn.AdaptiveMaxPool2d(output_size=(xDim // 2, yDim // 2)),
-            nn.Conv2d(32, 32, kernel_size=2, stride=1, padding=0),
+            nn.Conv2d(32, 32, kernel_size=2, stride=1, padding=0, device=device),
             actLayer(),
             nn.Flatten(),
         )
         cnnOutputSize = _computeShape(gameArea, th.float32, self.gameAreaCNN)
         self.gameAreaFC = nn.Sequential(
-            nn.Linear(cnnOutputSize, cnnHiddenLayers),
+            nn.Linear(cnnOutputSize, cnnHiddenLayers, device=device),
             actLayer(),
         )
 
@@ -49,9 +50,9 @@ class MarioLandExtractor(BaseFeaturesExtractor):
 
         # marioInfo (nStack, 7) -> (nStack, hiddenLayers)
         self.marioFC = nn.Sequential(
-            nn.Linear(marioInfo.shape[1], marioHiddenLayers),
+            nn.Linear(marioInfo.shape[1], marioHiddenLayers, device=device),
             actLayer(),
-            nn.Linear(marioHiddenLayers, marioHiddenLayers),
+            nn.Linear(marioHiddenLayers, marioHiddenLayers, device=device),
             actLayer(),
         )
 
@@ -59,14 +60,14 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         entityInfos = observationSpace[ENTITY_INFO_OBS]
 
         # entityIDs (nStack, 10) -> (nStack, 10, embeddingDimensions)
-        self.entityIDEmbedding = nn.Embedding(entityIDs.high[0][0], embeddingDimensions)
+        self.entityIDEmbedding = nn.Embedding(entityIDs.high[0][0], embeddingDimensions, device=device)
         # entities concat -> (nStack, 10, 8+embeddingDimensions)
 
         # entityInfos (nStack, 10, 8) -> (nStack, 10, hiddenLayers)
         self.entityFC = nn.Sequential(
-            nn.Linear(entityInfos.shape[2] + embeddingDimensions, entityHiddenLayers),
+            nn.Linear(entityInfos.shape[2] + embeddingDimensions, entityHiddenLayers, device=device),
             actLayer(),
-            nn.Linear(entityHiddenLayers, entityHiddenLayers),
+            nn.Linear(entityHiddenLayers, entityHiddenLayers, device=device),
             actLayer(),
         )
 
