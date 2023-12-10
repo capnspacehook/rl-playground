@@ -12,6 +12,7 @@ import pandas
 from stable_baselines3 import PPO
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
+import torch
 from wandb.integration.sb3 import WandbCallback
 import wandb
 
@@ -129,6 +130,9 @@ def train(args):
         if not args.disable_wandb:
             callbacks.append(WandbCallback(log="parameters"))
 
+        model.collect_rollouts = torch.compile(model.collect_rollouts, mode="reduce-overhead")
+        model.train = torch.compile(model.train, mode="reduce-overhead")
+
         model.learn(
             total_timesteps=args.session_length,
             reset_num_timesteps=True,
@@ -218,23 +222,24 @@ def playtest(args):
     print("Playtest mode")
 
     _, env, _ = createPyboyEnv(args.rom, args.render, args.emulation_speed, isPlaytest=True)
-    env.reset()
 
     rewards = []
     recentRewards = []
-    done = False
 
     try:
-        while not done:
-            _, reward, term, trunc, _ = env.step(0)
-            done = term or trunc
-            if reward != 0:
-                rewards.append(reward)
-                if len(recentRewards) == 3:
-                    recentRewards.pop()
-                recentRewards.insert(0, reward)
+        while True:
+            env.reset()
+            done = False
+            while not done:
+                _, reward, term, trunc, _ = env.step(0)
+                done = term or trunc
+                if reward != 0:
+                    rewards.append(reward)
+                    if len(recentRewards) == 3:
+                        recentRewards.pop()
+                    recentRewards.insert(0, reward)
 
-            # print(f"Recent rewards: {recentRewards}", flush=True)
+                # print(f"Recent rewards: {recentRewards}", flush=True)
     except KeyboardInterrupt:
         pass
 

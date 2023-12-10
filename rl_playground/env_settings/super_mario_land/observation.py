@@ -6,6 +6,7 @@ import numpy as np
 from pyboy import PyBoy
 
 from gymnasium.wrappers.frame_stack import FrameStack
+import torch
 
 from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import getGameArea
@@ -68,7 +69,8 @@ def combineObservations(
         SCALAR_OBS: scalar,
     }
 
-
+# numpy operations in this function cause compilations errors for some reason
+@torch._dynamo.disable
 def getEntityIDsAndInfo(
     states: Deque[MarioLandGameState],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
