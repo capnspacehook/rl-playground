@@ -5,8 +5,8 @@ import torch.nn as nn
 from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtractor
 
 # Observation settings
-N_OBS_STACK = 6
-N_STATE_STACK = 6
+N_OBS_STACK = 4  # number of observations to stack
+N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Reward values
 DEATH_PUNISHMENT = -25
