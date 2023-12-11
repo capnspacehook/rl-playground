@@ -1,0 +1,18 @@
+{
+    "batch_size": 512,
+    "clip_range": 0.2,
+    "ent_coef": 9.513020308749457e-06,
+    "gae_lambda": 0.98,
+    "gamma": 0.995,
+    "learning_rate": 3e-05,
+    "lr_schedule": "constant",
+    "max_grad_norm": 5,
+    "n_epochs": 5,
+    "n_steps": 512,
+    "activation_fn": "relu",
+    "net_arch": 512,
+    "cnn_hidden_layers": 128,
+    "mario_hidden_layers": 64,
+    "entity_hidden_layers": 128,
+    "vf_coef": 0.33653746631712467,
+}

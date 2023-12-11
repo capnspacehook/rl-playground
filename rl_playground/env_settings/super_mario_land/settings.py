@@ -5,7 +5,7 @@ import torch.nn as nn
 from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtractor
 
 # Observation settings
-N_OBS_STACK = 4  # number of observations to stack
+N_OBS_STACK = 6  # number of observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Reward values
@@ -19,7 +19,6 @@ MOVEMENT_REWARD_COEF = 1
 MUSHROOM_REWARD = 20
 FLOWER_REWARD = 20
 STAR_REWARD = 30
-MOVING_PLATFORM_REWARD = 7.5
 BOULDER_REWARD = 3
 HIT_BOSS_REWARD = 10
 KILL_BOSS_REWARD = 25
@@ -67,7 +66,7 @@ PPO_HYPERPARAMS = {
             # will be changed later
             device="auto",
         ),
-        net_arch=dict(pi=[1024, 1024], vf=[1024, 1024]),
+        net_arch=dict(pi=[512, 512], vf=[512, 512]),
         normalize_images=False,
     ),
 }

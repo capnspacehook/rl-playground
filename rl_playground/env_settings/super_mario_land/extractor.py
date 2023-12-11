@@ -15,7 +15,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         self,
         observationSpace: spaces.Dict,
         device: str,
-        actLayer: nn.Module = nn.ReLU,
+        activationFn: nn.Module = nn.ReLU,
         cnnHiddenLayers: int = 128,
         marioHiddenLayers: int = 64,
         embeddingDimensions: int = 8,
@@ -33,17 +33,17 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         # gameArea (nStack, 16, 20)
         self.gameAreaCNN = nn.Sequential(
             nn.Conv2d(numStack, 32, kernel_size=2, stride=1, padding=0, device=device),
-            actLayer(),
+            activationFn(),
             # max pool to downsample
             nn.AdaptiveMaxPool2d(output_size=(xDim // 2, yDim // 2)),
             nn.Conv2d(32, 32, kernel_size=2, stride=1, padding=0, device=device),
-            actLayer(),
+            activationFn(),
             nn.Flatten(),
         )
         cnnOutputSize = _computeShape(gameArea, th.float32, device, self.gameAreaCNN)
         self.gameAreaFC = nn.Sequential(
             nn.Linear(cnnOutputSize, cnnHiddenLayers, device=device),
-            actLayer(),
+            activationFn(),
         )
 
         marioInfo = observationSpace[MARIO_INFO_OBS]
@@ -51,9 +51,9 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         # marioInfo (nStack, 7) -> (nStack, hiddenLayers)
         self.marioFC = nn.Sequential(
             nn.Linear(marioInfo.shape[1], marioHiddenLayers, device=device),
-            actLayer(),
+            activationFn(),
             nn.Linear(marioHiddenLayers, marioHiddenLayers, device=device),
-            actLayer(),
+            activationFn(),
         )
 
         entityIDs = observationSpace[ENTITY_ID_OBS]
@@ -66,9 +66,9 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         # entityInfos (nStack, 10, 8) -> (nStack, 10, hiddenLayers)
         self.entityFC = nn.Sequential(
             nn.Linear(entityInfos.shape[2] + embeddingDimensions, entityHiddenLayers, device=device),
-            actLayer(),
+            activationFn(),
             nn.Linear(entityHiddenLayers, entityHiddenLayers, device=device),
-            actLayer(),
+            activationFn(),
         )
 
         # entityInfos (nStack, 10, hiddenLayers) -> (nStack, 1, hiddenLayers)
