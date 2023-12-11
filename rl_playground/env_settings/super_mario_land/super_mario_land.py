@@ -44,7 +44,7 @@ class MarioLandSettings(EnvSettings):
 
         self.isEval = isEval
         self.tileSet = None
-        self.obsStack=obsStack
+        self.obsStack = obsStack
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
@@ -90,9 +90,6 @@ class MarioLandSettings(EnvSettings):
             curState = self.gameState()
             return self.observation(options["_prevState"], curState), curState, False
 
-        self.onGroundFor = 0
-        self.movingPlatformJumpState = None
-
         if self.isEval:
             # evaluate levels in order
             self.stateIdx = self.evalStateCounter
@@ -108,19 +105,7 @@ class MarioLandSettings(EnvSettings):
 
         curState = self._loadLevel()
 
-        # reset the game state cache
-        [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
-
-        # reset the observation cache
-        gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(
-            self.pyboy, self.tileSet, self.gameStateCache
-        )
-        [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
-
-        return combineObservations(self.observationCaches, scalar), curState, True
+        return self._reset(curState), curState, True
 
     def _loadLevel(self) -> MarioLandGameState:
         stateFile = self.stateFiles[self.stateIdx]
@@ -139,10 +124,6 @@ class MarioLandSettings(EnvSettings):
 
         # seed randomizer
         self.gameWrapper._set_timer_div(None)
-
-        # reset max level progress
-        self.gameWrapper._level_progress_max = 0
-        self.evalNoProgress = 0
 
         # if we're starting at a level checkpoint do nothing for a random
         # amount of frames to make object placements varied
@@ -182,13 +163,14 @@ class MarioLandSettings(EnvSettings):
                     curState.isInvincible = True
                 self._handlePowerup(prevState, curState)
 
-        # level checkpoints get less time
-        timerHundreds = 4 - self.stateCheckpoint
-
         # set level timer
+        timerHundreds = STARTING_TIME // 100
         self.pyboy.set_memory_value(0xDA00, 0x28)
         self.pyboy.set_memory_value(0xDA01, 0)
         self.pyboy.set_memory_value(0xDA02, timerHundreds)
+
+        # set lives left
+        self.pyboy.set_memory_value(LIVES_LEFT_MEM_VAL, STARTING_LIVES - 1)
 
         return curState
 
@@ -197,12 +179,50 @@ class MarioLandSettings(EnvSettings):
         if currentCheckpoint < 2:
             self.nextCheckpointRewardAt = self.levelCheckpointRewards[world][self.stateCheckpoint]
 
+    def _reset(self, curState: MarioLandGameState) -> Dict[str, Any]:
+        # reset max level progress
+        self.gameWrapper._level_progress_max = curState.xPos
+        self.evalNoProgress = 0
+        self.onGroundFor = 0
+
+        # reset the game state cache
+        [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
+
+        # reset the observation cache
+        gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(
+            self.pyboy, self.tileSet, self.gameStateCache
+        )
+        [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
+        [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
+
+        return combineObservations(self.observationCaches, scalar)
+
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()
         self.gameStateCache.append(curState)
 
         # return flat punishment on mario's death
         if self._isDead(curState):
+            if curState.livesLeft == 0:
+                # no lives left, just return so this episode can be terminated
+                return DEATH_PUNISHMENT, curState
+
+            # skip frames where mario is dying
+            statusTimer = curState.statusTimer
+            gameState = curState.gameState
+            while gameState in (3, 4) or (gameState == 1 and statusTimer != 0):
+                self.pyboy.tick()
+                gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
+                statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
+
+            for _ in range(5):
+                self.pyboy.tick()
+
+            curState = self.gameState()
+            self._reset(curState)
+
             return DEATH_PUNISHMENT, curState
 
         # handle level clear
@@ -212,7 +232,7 @@ class MarioLandSettings(EnvSettings):
             # to avoid processing unnecessary frames and the AI playing
             # levels we don't want it to
             if self.isEval:
-                return CHECKPOINT_REWARD, curState
+                return LEVEL_CLEAR_REWARD, curState
             else:
                 # load start of next level, not a level checkpoint
                 self.stateIdx += (2 - self.stateCheckpoint) + 1
@@ -225,7 +245,7 @@ class MarioLandSettings(EnvSettings):
             self.gameWrapper._level_progress_max = curState.xPos
             curState.levelProgressMax = curState.xPos
 
-            return CHECKPOINT_REWARD, curState
+            return LEVEL_CLEAR_REWARD, curState
 
         # add time punishment every step to encourage speed more
         clock = CLOCK_PUNISHMENT
@@ -283,6 +303,11 @@ class MarioLandSettings(EnvSettings):
         # reward getting powerups and manage powerup related bookkeeping
         powerup = self._handlePowerup(prevState, curState)
 
+        # reward getting 1-up
+        heart = 0
+        if curState.livesLeft > prevState.livesLeft:
+            heart = HEART_REWARD
+
         # reward damaging or killing a boss
         boss = 0
         if curState.bossActive and curState.bossHealth < prevState.bossHealth:
@@ -291,7 +316,7 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = clock + movement + standingOnBoulder + checkpoint + powerup + boss
+        reward = clock + movement + standingOnBoulder + checkpoint + powerup + heart + boss
 
         return reward, curState
 
@@ -369,7 +394,7 @@ class MarioLandSettings(EnvSettings):
         return getStackedObservation(self.pyboy, self.tileSet, self.observationCaches, self.gameStateCache)
 
     def terminated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
-        return self._isDead(curState)
+        return self._isDead(curState) and curState.livesLeft == 0
 
     def truncated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
         # if no forward progress has been made in 15s, end the eval episode
@@ -378,7 +403,7 @@ class MarioLandSettings(EnvSettings):
         return self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR)
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
-        return curState.deadJumpTimer != 0 or curState.statusTimer == TIMER_DEATH
+        return curState.gameState in (1, 3)
 
     def actionSpace(self):
         actions = [
@@ -439,6 +464,7 @@ class MarioLandSettings(EnvSettings):
         s = f"""
 Max level progress: {curState.levelProgressMax}
 Powerup: {curState.powerupStatus}
+Lives left: {curState.livesLeft}
 Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
 X, Y: {curState.xPos}, {curState.yPos}
 Rel X, Y {curState.relXPos} {curState.relYPos}

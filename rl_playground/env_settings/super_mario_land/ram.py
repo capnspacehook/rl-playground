@@ -9,8 +9,9 @@ MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
 MARIO_X_POS_MEM_VAL = 0xC202
 MARIO_Y_POS_MEM_VAL = 0xC201
 WORLD_LEVEL_MEM_VAL = 0xFFB4
+LIVES_LEFT_MEM_VAL = 0xDA15
 STATUS_TIMER_MEM_VAL = 0xFFA6
-DEAD_JUMP_TIMER_MEM_VAL = 0xC0AC
+GAME_STATE_MEM_VAL = 0xFFB3
 MARIO_ON_GROUND_MEM_VAL = 0xC20A
 POWERUP_STATUS_MEM_VAL = 0xFF99
 HAS_FIRE_FLOWER_MEM_VAL = 0xFFB5
@@ -61,8 +62,9 @@ class MarioLandGameState(GameState):
         self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
         world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
         self.world = (world >> 4, world & 0x0F)
+        self.livesLeft = bcm_to_dec(self.pyboy.get_memory_value(LIVES_LEFT_MEM_VAL))
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
-        self.deadJumpTimer = self.pyboy.get_memory_value(DEAD_JUMP_TIMER_MEM_VAL)
+        self.gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
         self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
         self.movingPlatformObj = None
 
@@ -113,6 +115,14 @@ class MarioLandGameState(GameState):
             self.isInvincible = True
 
 
+def bcm_to_dec(value: int) -> int:
+    return (value >> 4) * 10 + (value & 0x0F)
+
+
+def dec_to_bcm(value: int) -> int:
+    return ((value // 10) << 4) | (value % 10)
+
+
 def convertYPos(relYPos: int) -> int:
     yPos = 0
 
@@ -128,24 +138,25 @@ def convertYPos(relYPos: int) -> int:
 
 
 _typeIDs = [
-    ((0x0,), 2),  # goomba
-    ((0x2, 0x55), 3),  # pirana plant
-    ((0x4,), 4),  # koopa
-    ((0x5,), 5),  # koopa bomb
-    ((0x8,), 6),  # sphinx boss
-    ((0x9,), 7),  # spitting plant
-    ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), 8),  # moving platforms
-    ((0xC, 0x35), 9),  # crush blocks
-    ((0xE,), 10),  # moth/jumping spider
-    ((0x10,), 11),  # fish
-    ((0x13, 0x14), 12),  # lift blocks
-    ((0x16, 0x17, 0x18), 13),  # robot
-    ((0x1E, 0x23, 0x45, 0x51, 0x54), 14),  # projectiles
-    ((0x24,), 15),  # seahorse
-    ((0x25,), 16),  # falling spider
-    ((0x27,), 17),  # explosion?
-    ((0x28, 0x29), 18),  # mushroom
-    ((0x2D, 0x2E), 19),  # fire flower
+    ((0x0,), 1),  # goomba
+    ((0x2, 0x55), 2),  # pirana plant
+    ((0x4,), 3),  # koopa
+    ((0x5,), 4),  # koopa bomb
+    ((0x8,), 5),  # sphinx boss
+    ((0x9,), 6),  # spitting plant
+    ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), 7),  # moving platforms
+    ((0xC, 0x35), 8),  # crush blocks
+    ((0xE,), 9),  # moth/jumping spider
+    ((0x10,), 10),  # fish
+    ((0x13, 0x14), 11),  # lift blocks
+    ((0x16, 0x17, 0x18), 12),  # robot
+    ((0x1E, 0x23, 0x45, 0x51, 0x54), 13),  # projectiles
+    ((0x24,), 14),  # seahorse
+    ((0x25,), 15),  # falling spider
+    ((0x27,), 16),  # explosion?
+    ((0x28, 0x29), 17),  # mushroom
+    ((0x2D, 0x2E), 18),  # fire flower
+    ((0x2A, 0x2B), 19),  # heart (1-up)
     ((0x31,), 20),  # fist rock
     ((0x32,), 21),  # fist rock boss
     ((0x33, 0x47), 22),  # bouncing boulder

@@ -8,6 +8,10 @@ from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtra
 N_OBS_STACK = 6  # number of observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
+# General env settings
+STARTING_LIVES = 2
+STARTING_TIME = 400
+
 # Reward values
 DEATH_PUNISHMENT = -25
 HIT_PUNISHMENT = -5
@@ -19,10 +23,12 @@ MOVEMENT_REWARD_COEF = 1
 MUSHROOM_REWARD = 20
 FLOWER_REWARD = 20
 STAR_REWARD = 30
+HEART_REWARD = 25
 BOULDER_REWARD = 3
 HIT_BOSS_REWARD = 10
 KILL_BOSS_REWARD = 25
-CHECKPOINT_REWARD = 25
+CHECKPOINT_REWARD = 15
+LEVEL_CLEAR_REWARD = 35
 
 # Random env settings
 RANDOM_NOOP_FRAMES = 60
