@@ -9,6 +9,7 @@
     "max_grad_norm": 5,
     "n_epochs": 5,
     "n_steps": 512,
+    "obs_stack": 6,
     "activation_fn": "relu",
     "net_arch": 512,
     "cnn_hidden_layers": 128,

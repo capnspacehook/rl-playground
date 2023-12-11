@@ -17,8 +17,7 @@ from optuna.samplers import TPESampler
 from optuna.trial import TrialState
 import torch.nn as nn
 
-# from sb3_contrib import QRDQN
-from sbx import PPO
+from stable_baselines3 import PPO
 from stable_baselines3.common.utils import get_device, set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
@@ -50,12 +49,14 @@ def sample_ppo_params(trial: optuna.Trial, numTrainingEnvs: int) -> Dict[str, An
     n_epochs = trial.suggest_categorical("n_epochs", [3, 5, 7, 10, 15])
     n_steps = trial.suggest_categorical("n_steps", [256, 512, 1024, 2048])
 
-    activation_fn = trial.suggest_categorical("activation_fn", ["relu", "relu6", "leaky_relu", "hardswish"])
+    obs_stack = trial.suggest_categorical("obs_stack", [4, 6, 8])
+
+    activation_fn = trial.suggest_categorical("activation_fn", ["relu", "relu6", "leaky_relu", "hard_swish"])
     activation_fn = {
         "relu": nn.ReLU,
         "relu6": nn.ReLU6,
         "leaky_relu": nn.LeakyReLU,
-        "hardswish": nn.Hardswish,
+        "hard_swish": nn.Hardswish,
     }[activation_fn]
 
     net_arch = trial.suggest_categorical("net_arch", [256, 512, 1024, 2048])
@@ -79,6 +80,9 @@ def sample_ppo_params(trial: optuna.Trial, numTrainingEnvs: int) -> Dict[str, An
         "max_grad_norm": max_grad_norm,
         "n_epochs": n_epochs,
         "n_steps": n_steps,
+        "env_kwargs": dict(
+            obsStack=obs_stack,
+        ),
         "policy_kwargs": dict(
             # log_std_init=log_std_init,
             activation_fn=activation_fn,
@@ -91,6 +95,7 @@ def sample_ppo_params(trial: optuna.Trial, numTrainingEnvs: int) -> Dict[str, An
                 entityHiddenLayers=entity_hidden_layers,
             ),
             net_arch=dict(pi=[net_arch, net_arch], vf=[net_arch, net_arch]),
+            normalize_images=False,
             # ortho_init=False,
         ),
         "vf_coef": vf_coef,
@@ -155,9 +160,11 @@ class SlowTrialPruner(BasePruner):
         return self.wrappedPruner.prune(study, trial)
 
 
-def makeEnv(rank: int, isEval=False, seed: int = 0):
+def makeEnv(rank: int, isEval=False, seed: int = 0, envKwargs: Dict = {}):
     def _init():
-        _, env = createPyboyEnv("games/super_mario_land.gb", isEval=isEval, isHyperparamOptimize=True)
+        _, env, _ = createPyboyEnv(
+            "games/super_mario_land.gb", isEval=isEval, isHyperparamOptimize=True, envKwargs=envKwargs
+        )
         env.reset(seed=seed + rank)
         return env
 
@@ -172,10 +179,15 @@ def createObjective(saveDir: Path, numTrainingEnvs: int, evalFreq: int, steps: i
         hyperparams = sample_ppo_params(trial, numTrainingEnvs)
         kwargs.update(hyperparams)
 
-        trainingEnv = SubprocVecEnv([makeEnv(i) for i in range(numTrainingEnvs)])
-        trainingEnv = VecNormalize(trainingEnv)
-        evalEnv = DummyVecEnv([makeEnv(0, isEval=True)])
-        evalEnv = VecNormalize(evalEnv, training=False, norm_reward=False)
+        envKwargs = {}
+        if "env_kwargs" in kwargs:
+            envKwargs = kwargs["env_kwargs"]
+            del kwargs["env_kwargs"]
+
+        trainingEnv = SubprocVecEnv([makeEnv(i, envKwargs=envKwargs) for i in range(numTrainingEnvs)])
+        trainingEnv = VecNormalize(trainingEnv, norm_obs=False)
+        evalEnv = DummyVecEnv([makeEnv(0, isEval=True, envKwargs=envKwargs)])
+        evalEnv = VecNormalize(evalEnv, training=False, norm_obs=False, norm_reward=False)
         if "gamma" in hyperparams:
             trainingEnv.gamma = hyperparams["gamma"]
             evalEnv.gamma = hyperparams["gamma"]
@@ -315,7 +327,7 @@ if __name__ == "__main__":
     pruner = MedianPruner(n_startup_trials=startupTrials, n_warmup_steps=args.evaluations_per_trial // 2)
     study.pruner = SlowTrialPruner(pruner, enqueuedTrials, args.evaluations_per_trial)
 
-    numTrainingEnvs = os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
+    numTrainingEnvs = os.cpu_count() if args.parallel_envs == 0 else args.parallel_envs
     evalFreq = (args.trial_steps // args.evaluations_per_trial) // numTrainingEnvs
 
     saveDir = Path("checkpoints", "optimize", args.study_name)

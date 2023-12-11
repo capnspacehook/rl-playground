@@ -5,6 +5,7 @@ import datetime
 import copy
 import os
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 import pandas
@@ -39,7 +40,7 @@ def train(args):
     saveDir = Path("checkpoints", "train", gameName, runName)
     saveDir.mkdir(parents=True)
 
-    def makeEnv(seed: int, rank: int, isEval: bool = False):
+    def makeEnv(seed: int, rank: int, isEval: bool = False, envKwargs: Dict = {}):
         def _init():
             _, env, _ = createPyboyEnv(
                 args.rom,
@@ -47,6 +48,7 @@ def train(args):
                 speed=args.emulation_speed,
                 isEval=isEval,
                 outputDir=saveDir,
+                envKwargs=envKwargs,
             )
             env.reset(seed=seed + rank)
             return env
@@ -59,18 +61,23 @@ def train(args):
         seed = np.random.randint(2**32 - 1, dtype="int64").item()
     print(f"seed: {seed}")
 
-    numTrainingEnvs = os.cpu_count() * 2 if args.parallel_envs == 0 else args.parallel_envs
+    config = envSettings.hyperParameters(args.algorithm)
+    envKwargs = {}
+    if "env_kwargs" in config:
+        envKwargs = config["env_kwargs"]
+        del config["env_kwargs"]
+
+    numTrainingEnvs = os.cpu_count() if args.parallel_envs == 0 else args.parallel_envs
     trainingVec = SubprocVecEnv
     if numTrainingEnvs == 1:
         trainingVec = DummyVecEnv
-    trainingEnv = trainingVec([makeEnv(seed, i) for i in range(numTrainingEnvs)])
-    evalEnv = DummyVecEnv([makeEnv(seed, 0, isEval=True)])
+    trainingEnv = trainingVec([makeEnv(seed, i, envKwargs=envKwargs) for i in range(numTrainingEnvs)])
+    evalEnv = DummyVecEnv([makeEnv(seed, 0, isEval=True, envKwargs=envKwargs)])
 
     orchestrator = orchClass(trainingEnv)
 
     projectName = gameName.replace("_", " ").title()
 
-    config = envSettings.hyperParameters(args.algorithm)
     config["device"] = args.device
     if "policy_kwargs" in config and "features_extractor_kwargs" in config["policy_kwargs"]:
         config["policy_kwargs"]["features_extractor_kwargs"]["device"] = get_device(args.device)

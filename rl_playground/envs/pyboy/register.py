@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Dict
 
 from pyboy import PyBoy
 from stable_baselines3.common.env_checker import check_env
@@ -22,6 +23,7 @@ def createPyboyEnv(
     isPlaytest: bool = False,
     isHyperparamOptimize: bool = False,
     outputDir: Path = "",
+    envKwargs: Dict = {},
 ):
     # silence useless pyboy logs
     logging.getLogger("pyboy.pyboy").setLevel(logging.ERROR)
@@ -43,9 +45,9 @@ def createPyboyEnv(
     envSettings = None
     orchestrator = None
     if pyboy.cartridge_title() == "METROID2":
-        envSettings = Metroid2Settings(pyboy, isEval)
+        envSettings = Metroid2Settings(pyboy, isEval, **envKwargs)
     else:
-        envSettings = MarioLandSettings(pyboy, isEval)
+        envSettings = MarioLandSettings(pyboy, isEval, **envKwargs)
         orchestrator = MarioLandOrchestrator
 
     env = PyBoyEnv(

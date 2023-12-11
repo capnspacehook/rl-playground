@@ -11,22 +11,25 @@ import torch
 from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import getGameArea
 from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState, MarioLandObject
-from rl_playground.env_settings.super_mario_land.settings import N_OBS_STACK, N_STATE_STACK
+from rl_playground.env_settings.super_mario_land.settings import N_STATE_STACK
 
 
-observationSpace = spaces.Dict(
-    {
-        GAME_AREA_OBS: spaces.Box(
-            low=0, high=MAX_TILE, shape=(N_OBS_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
-        ),
-        MARIO_INFO_OBS: spaces.Box(low=0, high=1, shape=(N_OBS_STACK, MARIO_INFO_SIZE), dtype=np.float32),
-        ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_OBS_STACK, N_ENTITIES), dtype=np.uint8),
-        ENTITY_INFO_OBS: spaces.Box(
-            low=0, high=1, shape=(N_OBS_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
-        ),
-        SCALAR_OBS: spaces.Box(low=0, high=1, shape=(SCALAR_SIZE,), dtype=np.float32),
-    }
-)
+def observationSpace(obsStack: int) -> spaces.Dict:
+    return spaces.Dict(
+        {
+            GAME_AREA_OBS: spaces.Box(
+                low=0, high=MAX_TILE, shape=(obsStack, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
+            ),
+            MARIO_INFO_OBS: spaces.Box(low=0, high=1, shape=(obsStack, MARIO_INFO_SIZE), dtype=np.float32),
+            ENTITY_ID_OBS: spaces.Box(
+                low=0, high=MAX_ENTITY_ID, shape=(obsStack, N_ENTITIES), dtype=np.uint8
+            ),
+            ENTITY_INFO_OBS: spaces.Box(
+                low=0, high=1, shape=(obsStack, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
+            ),
+            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(SCALAR_SIZE,), dtype=np.float32),
+        }
+    )
 
 
 def getStackedObservation(
@@ -68,6 +71,7 @@ def combineObservations(
         ENTITY_INFO_OBS: np.squeeze(np.array(obsCache[3])),
         SCALAR_OBS: scalar,
     }
+
 
 # numpy operations in this function cause compilations errors for some reason
 @torch._dynamo.disable

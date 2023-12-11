@@ -28,6 +28,7 @@ class MarioLandSettings(EnvSettings):
         self,
         pyboy: PyBoy,
         isEval: bool,
+        obsStack: int = N_OBS_STACK,
         stateDir: Path = Path("states", "super_mario_land"),
     ):
         self.pyboy = pyboy
@@ -35,14 +36,15 @@ class MarioLandSettings(EnvSettings):
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
         self.observationCaches = [
-            deque(maxlen=N_OBS_STACK),  # game area
-            deque(maxlen=N_OBS_STACK),  # mario info
-            deque(maxlen=N_OBS_STACK),  # entity IDs
-            deque(maxlen=N_OBS_STACK),  # entity infos
+            deque(maxlen=obsStack),  # game area
+            deque(maxlen=obsStack),  # mario info
+            deque(maxlen=obsStack),  # entity IDs
+            deque(maxlen=obsStack),  # entity infos
         ]
 
         self.isEval = isEval
         self.tileSet = None
+        self.obsStack=obsStack
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
@@ -405,7 +407,7 @@ class MarioLandSettings(EnvSettings):
         return actions, Discrete(len(actions))
 
     def observationSpace(self) -> Space:
-        return observationSpace
+        return observationSpace(self.obsStack)
 
     def normalize(self) -> (bool, bool):
         return False, True
