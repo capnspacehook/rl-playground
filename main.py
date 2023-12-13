@@ -173,32 +173,43 @@ def train(args):
 
 
 def evaluate(args):
-    print("Evaluation mode")
+    if args.interactive_eval:
+        print("Interactive evaluation mode")
+        isEval = False
+        isInteractiveEval = True
+    else:
+        print("Evaluation mode")
+        isEval = True
+        isInteractiveEval = False
 
-    envSettings, env, _ = createPyboyEnv(
-        args.rom, render=args.render, speed=args.emulation_speed, isEval=True
+    _, env, _ = createPyboyEnv(
+        args.rom,
+        render=args.render,
+        speed=args.emulation_speed,
+        isEval=isEval,
+        isInteractiveEval=isInteractiveEval,
     )
     env = DummyVecEnv([lambda: env])
     env = VecNormalize.load(vecNormalizePath(args.model_checkpoint), env)
     env.training = False
     env.norm_reward = False
 
-    model = args.algo.load(args.model_checkpoint, env=env)
+    model = args.algo.load(args.model_checkpoint, env=env, device=args.device)
 
     episodeRewards = []
     obs = env.reset()
-    for _ in range(envSettings.evalEpisodes()):
-        done = False
-        rewards = []
-        try:
+    try:
+        while True:
+            done = False
+            rewards = []
             while not done:
                 action, _ = model.predict(obs, deterministic=True)
                 obs, reward, done, _ = env.step(action)
                 rewards.append(reward)
-        except KeyboardInterrupt:
-            pass
+    except KeyboardInterrupt:
+        pass
 
-        episodeRewards.append(sum(rewards))
+    episodeRewards.append(sum(rewards))
 
     print(episodeRewards)
     print(f"Mean reward: {np.mean(episodeRewards)}")
@@ -262,12 +273,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("rl-playground")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("-t", "--train", action="store_true", help="train AI to play a game")
-    mode_group.add_argument("--evaluate", action="store_true", help="evaluate a network")
+    mode_group.add_argument("--evaluate", action="store_true", help="evaluate a model")
     mode_group.add_argument("-r", "--replay", action="store_true", help="replay a training episode")
     mode_group.add_argument(
         "--playtest",
         action="store_true",
         help="manually test state and reward tracking",
+    )
+    parser.add_argument(
+        "--interactive-eval",
+        action="store_true",
+        help="evaluate a model while also allowing for manual inputs",
     )
     parser.add_argument(
         "-a",
@@ -353,6 +369,10 @@ if __name__ == "__main__":
         print("--model-checkpoint must be specified when --evaluate is specified")
         parser.print_help()
         exit(1)
+    if args.interactive_eval and not args.evaluate:
+        print("--evaluate must be specified when --interactive-eval is specified")
+        parser.print_help()
+        exit(1)
     if args.replay and not args.replay_episode:
         print("--replay-episode must be specified when --replay is specified")
         parser.print_help()
@@ -375,10 +395,10 @@ if __name__ == "__main__":
         args.render = True
 
     if args.emulation_speed == 0:
-        if args.evaluate or args.replay:
-            args.emulation_speed = 3
-        if args.playtest:
+        if args.playtest or args.interactive_eval:
             args.emulation_speed = 1
+        elif args.evaluate or args.replay:
+            args.emulation_speed = 3
 
     if args.train:
         train(args)

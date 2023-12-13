@@ -9,7 +9,6 @@ from pyboy import PyBoy, WindowEvent
 from rl_playground.env_settings.env_settings import GameState, EnvSettings
 
 
-# TODO: make env more generic and more input sending to EnvSettings
 class PyBoyEnv(Env):
     def __init__(
         self,
@@ -18,6 +17,7 @@ class PyBoyEnv(Env):
         render: bool = False,
         isEval: bool = False,
         isPlaytest: bool = False,
+        isInteractiveEval: bool = False,
         outputDir: Path | None = None,
     ) -> None:
         self.pyboy = pyboy
@@ -26,6 +26,7 @@ class PyBoyEnv(Env):
         self._started = False
         self.isEval = isEval
         self.isPlaytest = isPlaytest
+        self.isInteractiveEval = isInteractiveEval
         self.episodeNum = 0
         self.curInfo = dict()
         self.outputDir = outputDir
@@ -68,6 +69,8 @@ class PyBoyEnv(Env):
         if render:
             self.render_mode = "rgb_array"
 
+        self.interactive = False
+
         random.seed()
 
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
@@ -92,7 +95,15 @@ class PyBoyEnv(Env):
             self.prevGameState = self.envSettings.gameState()
 
         actions = self.actions[action_idx]
-        if not self.isPlaytest:
+        if self.isInteractiveEval:
+            with open("agent_enabled.txt", "r") as f:
+                if "true" in f.read():
+                    self.interactive = False
+                    self.sendInputs(actions)
+                elif not self.interactive:
+                    self.sendInputs([WindowEvent.PASS])
+                    self.interactive = True
+        elif not self.isPlaytest:
             self.sendInputs(actions)
 
         pyboyDone = self.pyboy.tick()

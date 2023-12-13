@@ -21,6 +21,7 @@ def createPyboyEnv(
     speed: int = 0,
     isEval: bool = False,
     isPlaytest: bool = False,
+    isInteractiveEval: bool = False,
     isHyperparamOptimize: bool = False,
     outputDir: Path = "",
     envKwargs: Dict = {},
@@ -56,6 +57,7 @@ def createPyboyEnv(
         render == render,
         isEval=isEval,
         isPlaytest=isPlaytest,
+        isInteractiveEval=isInteractiveEval,
         outputDir=outputDir,
     )
 
