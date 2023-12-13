@@ -182,6 +182,7 @@ class MarioLandSettings(EnvSettings):
     def _reset(self, curState: MarioLandGameState) -> Dict[str, Any]:
         # reset max level progress
         self.gameWrapper._level_progress_max = curState.xPos
+        curState.levelProgressMax = curState.xPos
         self.evalNoProgress = 0
         self.onGroundFor = 0
 
@@ -250,15 +251,8 @@ class MarioLandSettings(EnvSettings):
         # add time punishment every step to encourage speed more
         clock = CLOCK_PUNISHMENT
 
-        # In rare occasions (jumping on a moving platform in 3-3 for
-        # instance) the scroll X value is ~16, while in the next frame
-        # the scroll X value is where it was before but the level block
-        # increased making the X position wildly jump again. Until I
-        # figure out how to properly fix this, just use the previous
-        # X position if the position difference is too large to be normal.
-        if abs(curState.xPos - prevState.xPos) > MARIO_MAX_X_SPEED:
-            curState.xPos = prevState.xPos
-        movement = (curState.xPos - prevState.xPos) * MOVEMENT_REWARD_COEF
+        xSpeed = np.clip((curState.xPos - prevState.xPos,), -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
+        movement = xSpeed * MOVEMENT_REWARD_COEF
 
         # the game registers mario as on the ground 1 or 2 frames before
         # he actually is to change his pose
@@ -276,7 +270,7 @@ class MarioLandSettings(EnvSettings):
         if (
             curState.world[0] == 3
             and onGround
-            and movement > 0
+            and xSpeed > 0
             and self._standingOnTiles(bouncing_boulder_tiles)
         ):
             standingOnBoulder = BOULDER_REWARD

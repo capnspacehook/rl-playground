@@ -86,8 +86,14 @@ def getEntityIDsAndInfo(
     if prevState.world != curState.world:
         prevState = curState
 
-    curState.rawXSpeed = curState.xPos - prevState.xPos
-    curState.rawYSpeed = curState.yPos - prevState.yPos
+    # In rare occasions (jumping on a moving platform in 3-3 for
+    # instance) the scroll X value is ~16, while in the next frame
+    # the scroll X value is where it was before but the level block
+    # increased making the X position wildly jump again. Until I
+    # figure out how to properly fix this, clip the X (and Y for
+    # good measure) speed to ensure it's always a sane value.
+    curState.rawXSpeed = np.clip((curState.xPos - prevState.xPos,), -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
+    curState.rawYSpeed = np.clip((curState.yPos - prevState.yPos,), -MARIO_MAX_Y_SPEED, MARIO_MAX_Y_SPEED)
 
     curState.meanXSpeed = np.mean([s.rawXSpeed for s in states])
     curState.meanYSpeed = np.mean([s.rawYSpeed for s in states])
