@@ -19,6 +19,9 @@ HIT_PUNISHMENT = -5
 # earlier, then after game mechanics and levels are learned
 # encourage speed more
 CLOCK_PUNISHMENT = -0.1
+# TODO: weight forward and backward movement differently so moving
+# backwards isn't punished as much, and maybe also add extra reward
+# when max level progress increases
 MOVEMENT_REWARD_COEF = 1
 MUSHROOM_REWARD = 20
 FLOWER_REWARD = 20
@@ -27,6 +30,7 @@ HEART_REWARD = 25
 BOULDER_REWARD = 3
 HIT_BOSS_REWARD = 10
 KILL_BOSS_REWARD = 25
+# TODO: is this necessary?
 CHECKPOINT_REWARD = 15
 LEVEL_CLEAR_REWARD = 35
 

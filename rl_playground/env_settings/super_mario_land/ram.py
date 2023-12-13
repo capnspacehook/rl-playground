@@ -58,6 +58,7 @@ class MarioLandGameState(GameState):
         self.yPos = convertYPos(self.relYPos)
 
         # will be set later
+        self.levelProgressMax = 0
         self.rawXSpeed = 0
         self.rawYSpeed = 0
         self.meanXSpeed = 0
@@ -65,7 +66,6 @@ class MarioLandGameState(GameState):
         self.xAccel = 0
         self.yAccel = 0
 
-        self.levelProgressMax = max(self.gameWrapper._level_progress_max, self.xPos)
         world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
         self.world = (world >> 4, world & 0x0F)
         self.livesLeft = bcm_to_dec(self.pyboy.get_memory_value(LIVES_LEFT_MEM_VAL))

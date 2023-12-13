@@ -72,10 +72,8 @@ class MarioLandSettings(EnvSettings):
         # all levels are equally likely to be trained on at the start
         self.levelChooseProbs = [chooseProb for _ in range(len(self.levelCheckpointRewards))]
 
+        self.levelProgressMax = 0
         self.onGroundFor = 0
-
-        # so level progress max will be set
-        self.gameWrapper.start_game()
 
     def reset(self, options: dict[str, Any] | None = None) -> (Any, MarioLandGameState, bool):
         if options is not None:
@@ -179,7 +177,7 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
 
         # reset max level progress
-        self.gameWrapper._level_progress_max = curState.xPos
+        self.levelProgressMax = curState.xPos
         curState.levelProgressMax = curState.xPos
 
         return curState
@@ -209,6 +207,8 @@ class MarioLandSettings(EnvSettings):
 
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()
+        self.levelProgressMax = max(self.levelProgressMax, curState.xPos)
+        curState.levelProgressMax = self.levelProgressMax
         self.gameStateCache.append(curState)
 
         # return flat punishment on mario's death
