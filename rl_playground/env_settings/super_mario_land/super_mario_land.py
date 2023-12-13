@@ -165,12 +165,22 @@ class MarioLandSettings(EnvSettings):
 
         # set level timer
         timerHundreds = STARTING_TIME // 100
-        self.pyboy.set_memory_value(0xDA00, 0x28)
-        self.pyboy.set_memory_value(0xDA01, 0)
-        self.pyboy.set_memory_value(0xDA02, timerHundreds)
+        timerTens = STARTING_TIME - (timerHundreds * 100)
+        self.pyboy.set_memory_value(TIMER_HUNDREDS, timerHundreds)
+        self.pyboy.set_memory_value(TIMER_TENS, dec_to_bcm(timerTens))
+        self.pyboy.set_memory_value(TIMER_FRAMES, 0x28)
 
         # set lives left
-        self.pyboy.set_memory_value(LIVES_LEFT_MEM_VAL, STARTING_LIVES - 1)
+        lives = STARTING_LIVES - 1
+        livesTens = lives // 10
+        livesOnes = lives % 10
+        self.pyboy.set_memory_value(LIVES_LEFT_MEM_VAL, (livesTens << 4) | livesOnes)
+        self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL, livesTens)
+        self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
+
+        # reset max level progress
+        self.gameWrapper._level_progress_max = curState.xPos
+        curState.levelProgressMax = curState.xPos
 
         return curState
 
@@ -180,9 +190,6 @@ class MarioLandSettings(EnvSettings):
             self.nextCheckpointRewardAt = self.levelCheckpointRewards[world][self.stateCheckpoint]
 
     def _reset(self, curState: MarioLandGameState) -> Dict[str, Any]:
-        # reset max level progress
-        self.gameWrapper._level_progress_max = curState.xPos
-        curState.levelProgressMax = curState.xPos
         self.evalNoProgress = 0
         self.onGroundFor = 0
 
