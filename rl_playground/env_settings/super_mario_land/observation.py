@@ -220,6 +220,8 @@ def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
                 np.array(
                     [scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True)], dtype=np.float32
                 ),
+                np.array([scaledEncoding(curState.livesLeft, 99, True)], dtype=np.float32),
+                np.array([scaledEncoding(curState.timeLeft, 400, True)], dtype=np.float32),
             ),
         )
     )

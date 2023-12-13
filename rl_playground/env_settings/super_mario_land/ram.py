@@ -72,7 +72,10 @@ class MarioLandGameState(GameState):
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
         self.gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
         self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
-        self.movingPlatformObj = None
+
+        timerHundreds = self.pyboy.get_memory_value(TIMER_HUNDREDS)
+        timerTens = bcm_to_dec(self.pyboy.get_memory_value(TIMER_TENS))
+        self.timeLeft = (timerHundreds * 100) + timerTens
 
         self.objects: List[MarioLandObject] = []
         self.bossActive = False

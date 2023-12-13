@@ -95,11 +95,11 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         entities = self.entityMaxPool(entities).squeeze(-2)  # (nStack, entityHiddenLayers)
         entities = self.entityMaxPool(entities).squeeze(-2)  # (entityHiddenLayers)
 
-        scalar = observations[SCALAR_OBS]  # (6)
+        scalar = observations[SCALAR_OBS]  # (8)
 
         allFeatures = th.cat(
             (gameArea, mario, entities, scalar), dim=-1
-        )  # cnnHiddenLayers+marioHiddenLayers+entityHiddenLayers+6
+        )  # cnnHiddenLayers+marioHiddenLayers+entityHiddenLayers+8
 
         return allFeatures
 

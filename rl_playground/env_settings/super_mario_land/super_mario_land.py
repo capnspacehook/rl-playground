@@ -473,7 +473,6 @@ Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed,3)} {round(cu
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
 Object type: {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
 Boss: {curState.bossActive} {curState.bossHealth}
-Moving platform: {curState.movingPlatformObj is not None}
 {objects}
 """
         print(s[1:], flush=True)
