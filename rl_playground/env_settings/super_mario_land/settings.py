@@ -13,6 +13,7 @@ STARTING_LIVES = 2
 STARTING_TIME = 400
 
 # Reward values
+# TODO: punish more for game over?
 DEATH_PUNISHMENT = -25
 HIT_PUNISHMENT = -5
 # TODO: linearly increase to encourage progress over speed

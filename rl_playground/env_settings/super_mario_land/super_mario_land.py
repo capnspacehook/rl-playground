@@ -258,7 +258,7 @@ class MarioLandSettings(EnvSettings):
         # add time punishment every step to encourage speed more
         clock = CLOCK_PUNISHMENT
 
-        xSpeed = np.clip((curState.xPos - prevState.xPos,), -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
+        xSpeed = np.clip(curState.xPos - prevState.xPos, -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
         movement = xSpeed * MOVEMENT_REWARD_COEF
 
         # the game registers mario as on the ground 1 or 2 frames before
