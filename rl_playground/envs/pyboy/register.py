@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Dict
 
+from gymnasium.experimental.wrappers.stateful_action import StickyActionV0
 from pyboy import PyBoy
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
@@ -63,6 +64,7 @@ def createPyboyEnv(
 
     env = Monitor(env)
     env = FrameSkip(env, skip=4)
+    env = StickyActionV0(env, 0.10)
 
     # check_env(env)
 
