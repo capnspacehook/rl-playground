@@ -213,13 +213,19 @@ def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
     return np.array(
         np.concatenate(
             (
+                np.array([float(curState.xPos == curState.levelProgressMax)], dtype=np.float32),
                 oneHotEncoding(curState.powerupStatus, POWERUP_STATUSES),
                 np.array([float(curState.hasStar)], dtype=np.float32),
                 np.array(
                     [scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True)], dtype=np.float32
                 ),
-                np.array([scaledEncoding(curState.livesLeft, 99, True)], dtype=np.float32),
-                np.array([scaledEncoding(curState.timeLeft, 400, True)], dtype=np.float32),
+                np.array(
+                    [
+                        scaledEncoding(curState.livesLeft, 99, True),
+                        scaledEncoding(curState.timeLeft, 400, True),
+                    ],
+                    dtype=np.float32,
+                ),
             ),
         )
     )
