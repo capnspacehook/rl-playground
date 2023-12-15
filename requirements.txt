@@ -11,7 +11,7 @@ cloudpickle==3.0.0
 colorlog==6.7.0
 contourpy==1.2.0
 cycler==0.12.1
-Cython==3.0.5
+Cython==3.0.6
 decorator==4.4.2
 dm-tree==0.1.8
 docker-pycreds==0.4.0
@@ -51,7 +51,7 @@ msgpack==1.0.7
 mysqlclient==2.2.0
 nest-asyncio==1.5.8
 networkx==3.2.1
-numpy==1.26.1
+numpy==1.26.2
 nvidia-cublas-cu12==12.1.3.1
 nvidia-cuda-cupti-cu12==12.1.105
 nvidia-cuda-nvrtc-cu12==12.1.105
@@ -81,7 +81,7 @@ psutil==5.9.6
 py-spy==0.3.14
 pyasn1==0.5.0
 pyasn1-modules==0.3.0
-pyboy @ file:///home/capnspacehook/Documents/git/rl-playground/venv/src/pyboy
+pyboy @ file:///home/capnspacehook/Documents/git/pyboy
 Pygments==2.16.1
 pyparsing==3.1.1
 PySDL2==0.9.16
@@ -109,12 +109,12 @@ tensorflow-probability==0.22.1
 tensorstore==0.1.47
 threadpoolctl==3.2.0
 toolz==0.12.0
-torch==2.1.0
+torch==2.1.1
 tqdm==4.66.1
 triton==2.1.0
 typing_extensions==4.8.0
 tzdata==2023.3
 urllib3==2.0.7
-wandb==0.16.0
+wandb==0.16.1
 Werkzeug==3.0.1
 zipp==3.17.0
