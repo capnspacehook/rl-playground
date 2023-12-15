@@ -452,7 +452,7 @@ class MarioLandSettings(EnvSettings):
         return observationSpace(self.obsStack)
 
     def normalize(self) -> (bool, bool):
-        return False, False
+        return False, True
 
     def hyperParameters(self, algo: str) -> Dict[str, Any]:
         match algo:
