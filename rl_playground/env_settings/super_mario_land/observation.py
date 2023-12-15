@@ -4,8 +4,6 @@ from typing import Any, Deque, Dict, List, Tuple
 from gymnasium import spaces
 import numpy as np
 from pyboy import PyBoy
-
-from gymnasium.wrappers.frame_stack import FrameStack
 import torch
 
 from rl_playground.env_settings.super_mario_land.constants import *

@@ -52,25 +52,9 @@ class MarioLandSettings(EnvSettings):
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
         self.stateCheckpoint = 0
-        self.currentCheckpoint = 0
-        self.nextCheckpointRewardAt = 0
-        # TODO: number of checkpoints should be able to differ between levels
-        self.levelCheckpointRewards = {
-            (1, 1): [950, 1605],
-            (1, 2): [1150, 1840],
-            (1, 3): [1065, 1927],
-            (2, 1): [855, 1610],
-            (2, 2): [870, 1975],
-            (3, 1): [2130, 2784],
-            (3, 2): [930, 1980],
-            (3, 3): [705, 1775],
-            (4, 1): [865, 1970],
-            (4, 2): [980, 2150],
-        }
 
-        chooseProb = len(self.levelCheckpointRewards) / 100.0
-        # all levels are equally likely to be trained on at the start
-        self.levelChooseProbs = [chooseProb for _ in range(len(self.levelCheckpointRewards))]
+        # all 10 levels are equally likely to be trained on at the start
+        self.levelChooseProbs = [0.1 for _ in range(10)]
 
         self.levelProgressMax = 0
         self.onGroundFor = 0
@@ -105,7 +89,9 @@ class MarioLandSettings(EnvSettings):
 
         return self._reset(curState), curState, True
 
-    def _loadLevel(self) -> MarioLandGameState:
+    def _loadLevel(
+        self, prevState: MarioLandGameState | None = None, transferState: bool = False
+    ) -> MarioLandGameState:
         stateFile = self.stateFiles[self.stateIdx]
         with open(stateFile, "rb") as f:
             self.pyboy.load_state(f)
@@ -113,11 +99,7 @@ class MarioLandSettings(EnvSettings):
         # get checkpoint number from state filename
         stateFile = basename(splitext(stateFile)[0])
         world = int(stateFile[0])
-        level = int(stateFile[2])
         self.stateCheckpoint = int(stateFile[4])
-        self.currentCheckpoint = self.stateCheckpoint
-
-        self._setNextCheckpointRewardAt((world, level), self.stateCheckpoint)
         self.tileSet = worldTilesets[world]
 
         # seed randomizer
@@ -129,38 +111,6 @@ class MarioLandSettings(EnvSettings):
             for _ in range(random.randint(0, RANDOM_NOOP_FRAMES)):
                 self.pyboy.tick()
 
-        # occasionally randomly set mario's powerup status so the NN
-        # can learn to use the powerups; also makes the environment more
-        # stochastic
-        curState = self.gameState()
-        if not self.isEval:
-            if random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
-                # 0: small with star
-                # 1: big
-                # 2: big with star
-                # 3: fire flower
-                # 4: fire flower with star
-                gotStar = False
-                randPowerup = random.randint(0, 4)
-                # TODO: change back when pyboy bug is fixed
-                if False:  # randPowerup in (0, 2, 4):
-                    gotStar = True
-                    self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
-                    # set star song so timer functions correctly
-                    self.pyboy.set_memory_value(0xDFE8, 0x0C)
-                if randPowerup != STATUS_SMALL:
-                    self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
-                    if randPowerup > 2:
-                        self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
-
-                prevState = curState
-                curState = self.gameState()
-                if gotStar:
-                    curState.gotStar = True
-                    curState.hasStar = True
-                    curState.isInvincible = True
-                self._handlePowerup(prevState, curState)
-
         # set level timer
         timerHundreds = STARTING_TIME // 100
         timerTens = STARTING_TIME - (timerHundreds * 100)
@@ -168,24 +118,77 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(TIMER_TENS, dec_to_bcm(timerTens))
         self.pyboy.set_memory_value(TIMER_FRAMES, 0x28)
 
+        # set score to 0
+        for i in range(3):
+            self.pyboy.set_memory_value(SCORE_MEM_VAL + i, 0)
+        for i in range(5):
+            self.pyboy.set_memory_value(SCORE_DISPLAY_MEM_VAL + i, 44)
+        self.pyboy.set_memory_value(SCORE_DISPLAY_MEM_VAL + 5, 0)
+
+        # set coins to 0
+        self.pyboy.set_memory_value(COINS_MEM_VAL, 0)
+        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL, 0)
+        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL + 1, 0)
+
+        if transferState:
+            livesLeft = prevState.livesLeft
+            if prevState.powerupStatus != STATUS_SMALL:
+                self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
+            if prevState.powerupStatus == STATUS_FIRE:
+                self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
+
+            curState = self.gameState()
+            self._handlePowerup(prevState, curState)
+        else:
+            # make starting lives random to NN can learn to strategically
+            # handle lives
+            livesLeft = random.randint(STARTING_LIVES_MIN, STARTING_LIVES_MAX) - 1
+
+            # occasionally randomly set mario's powerup status so the NN
+            # can learn to use the powerups; also makes the environment more
+            # stochastic
+            curState = self.gameState()
+            if not self.isEval:
+                if random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
+                    # 0: small with star
+                    # 1: big
+                    # 2: big with star
+                    # 3: fire flower
+                    # 4: fire flower with star
+                    gotStar = False
+                    randPowerup = random.randint(0, 4)
+                    # TODO: change back when pyboy bug is fixed
+                    if False:  # randPowerup in (0, 2, 4):
+                        gotStar = True
+                        self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
+                        # set star song so timer functions correctly
+                        self.pyboy.set_memory_value(0xDFE8, 0x0C)
+                    if randPowerup != STATUS_SMALL:
+                        self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
+                        if randPowerup > 2:
+                            self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
+
+                    prevState = curState
+                    curState = self.gameState()
+                    if gotStar:
+                        curState.gotStar = True
+                        curState.hasStar = True
+                        curState.isInvincible = True
+                    self._handlePowerup(prevState, curState)
+
         # set lives left
-        lives = STARTING_LIVES - 1
-        livesTens = lives // 10
-        livesOnes = lives % 10
+        livesTens = livesLeft // 10
+        livesOnes = livesLeft % 10
         self.pyboy.set_memory_value(LIVES_LEFT_MEM_VAL, (livesTens << 4) | livesOnes)
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL, livesTens)
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
+        curState.livesLeft = livesLeft
 
         # reset max level progress
         self.levelProgressMax = curState.xPos
         curState.levelProgressMax = curState.xPos
 
         return curState
-
-    def _setNextCheckpointRewardAt(self, world, currentCheckpoint):
-        self.nextCheckpointRewardAt = 0
-        if currentCheckpoint < 2:
-            self.nextCheckpointRewardAt = self.levelCheckpointRewards[world][self.stateCheckpoint]
 
     def _reset(self, curState: MarioLandGameState) -> Dict[str, Any]:
         self.evalNoProgress = 0
@@ -215,7 +218,7 @@ class MarioLandSettings(EnvSettings):
         if self._isDead(curState):
             if curState.livesLeft == 0:
                 # no lives left, just return so this episode can be terminated
-                return DEATH_PUNISHMENT, curState
+                return GAME_OVER_PUNISHMENT, curState
 
             # skip frames where mario is dying
             statusTimer = curState.statusTimer
@@ -247,11 +250,8 @@ class MarioLandSettings(EnvSettings):
                 if self.stateIdx >= len(self.stateFiles):
                     self.stateIdx = 0
 
-                curState = self._loadLevel()
-
-            # reset level progress max on new level
-            self.gameWrapper._level_progress_max = curState.xPos
-            curState.levelProgressMax = curState.xPos
+                # keep lives and powerup in new level
+                curState = self._loadLevel(prevState=prevState, transferState=True)
 
             return LEVEL_CLEAR_REWARD, curState
 
@@ -259,7 +259,12 @@ class MarioLandSettings(EnvSettings):
         clock = CLOCK_PUNISHMENT
 
         xSpeed = np.clip(curState.xPos - prevState.xPos, -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
-        movement = xSpeed * MOVEMENT_REWARD_COEF
+        movement = 0
+        if xSpeed > 0:
+            movement = xSpeed * FORWARD_REWARD_COEF
+            movement += (curState.levelProgressMax - prevState.levelProgressMax) * PROGRESS_REWARD_COEF
+        elif xSpeed < 0:
+            movement = xSpeed * BACKWARD_PUNISHMENT_COEF
 
         # the game registers mario as on the ground 1 or 2 frames before
         # he actually is to change his pose
@@ -281,17 +286,6 @@ class MarioLandSettings(EnvSettings):
             and self._standingOnTiles(bouncing_boulder_tiles)
         ):
             standingOnBoulder = BOULDER_REWARD
-
-        # reward for passing checkpoints
-        checkpoint = 0
-        if (
-            curState.levelProgressMax != prevState.levelProgressMax
-            and self.nextCheckpointRewardAt != 0
-            and curState.levelProgressMax >= self.nextCheckpointRewardAt
-        ):
-            self.currentCheckpoint += 1
-            self._setNextCheckpointRewardAt(curState.world, self.currentCheckpoint)
-            checkpoint = CHECKPOINT_REWARD
 
         # keep track of how long the agent is idle so we can end early
         # in an evaluation
@@ -317,7 +311,7 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = clock + movement + standingOnBoulder + checkpoint + powerup + heart + boss
+        reward = clock + movement + standingOnBoulder + powerup + heart + boss
 
         return reward, curState
 
@@ -398,10 +392,13 @@ class MarioLandSettings(EnvSettings):
         return self._isDead(curState) and curState.livesLeft == 0
 
     def truncated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
-        # if no forward progress has been made in 15s, end the eval episode
-        # if the level is completed end this episode so the next level
-        # isn't played twice
-        return self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR)
+        # If no forward progress has been made in 15s, end the eval episode.
+        # If the level is completed end this episode so the next level
+        # isn't played twice. If 4-2 is completed end the episode, that's
+        # final normal level so there's no level to start after it.
+        return (
+            self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR)
+        ) or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
         return curState.gameState in (1, 3)

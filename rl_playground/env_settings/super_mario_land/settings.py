@@ -9,35 +9,35 @@ N_OBS_STACK = 6  # number of observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # General env settings
-STARTING_LIVES = 2
 STARTING_TIME = 400
 
 # Reward values
-# TODO: punish more for game over?
-DEATH_PUNISHMENT = -25
 HIT_PUNISHMENT = -5
+DEATH_PUNISHMENT = -25
+GAME_OVER_PUNISHMENT = -35
 # TODO: linearly increase to encourage progress over speed
 # earlier, then after game mechanics and levels are learned
 # encourage speed more
-CLOCK_PUNISHMENT = -0.1
-# TODO: weight forward and backward movement differently so moving
-# backwards isn't punished as much, and maybe also add extra reward
-# when max level progress increases
-MOVEMENT_REWARD_COEF = 1
+CLOCK_PUNISHMENT = -0.05
+FORWARD_REWARD_COEF = 0.5
+BACKWARD_PUNISHMENT_COEF = 0.1
+PROGRESS_REWARD_COEF = 0.5
 MUSHROOM_REWARD = 20
+# TODO: add reward for killing enemies with fireballs
 FLOWER_REWARD = 20
 STAR_REWARD = 30
 HEART_REWARD = 25
 BOULDER_REWARD = 3
 HIT_BOSS_REWARD = 10
 KILL_BOSS_REWARD = 25
-# TODO: is this necessary?
-CHECKPOINT_REWARD = 15
+# TODO: increase reward if cleared with more lives/powerup
 LEVEL_CLEAR_REWARD = 35
 
 # Random env settings
 RANDOM_NOOP_FRAMES = 60
 RANDOM_POWERUP_CHANCE = 25
+STARTING_LIVES_MIN = 1
+STARTING_LIVES_MAX = 3
 
 # Training level selection settings
 N_WARMUP_EVALS = 10
@@ -60,16 +60,16 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
 
 PPO_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
-    "batch_size": 512,
+    "batch_size": 512,  # TODO: try 256
     "clip_range": 0.2,
-    "ent_coef": 9.513020308749457e-06,
+    "ent_coef": 1e-02,
     "gae_lambda": 0.98,
     "gamma": 0.995,
-    "learning_rate": 3e-05,
-    "max_grad_norm": 5,
+    "learning_rate": linear_schedule(3e-05),
+    "max_grad_norm": 1,
     "n_epochs": 5,
-    "n_steps": 512,
-    "vf_coef": 0.33653746631712467,
+    "n_steps": 1024,
+    "vf_coef": 0.5,
     "policy_kwargs": dict(
         activation_fn=nn.ReLU,
         features_extractor_class=MarioLandExtractor,
@@ -79,5 +79,6 @@ PPO_HYPERPARAMS = {
         ),
         net_arch=dict(pi=[512, 512], vf=[512, 512]),
         normalize_images=False,
+        share_features_extractor=True,
     ),
 }
