@@ -48,6 +48,7 @@ class MarioLandSettings(EnvSettings):
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
+        self.framesAlive = 0
         self.invincibilityTimer = 0
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
@@ -130,6 +131,7 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL, 0)
         self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL + 1, 0)
 
+        livesLeft = 1
         if transferState:
             livesLeft = prevState.livesLeft
             if prevState.powerupStatus != STATUS_SMALL:
@@ -139,7 +141,7 @@ class MarioLandSettings(EnvSettings):
 
             curState = self.gameState()
             self._handlePowerup(prevState, curState)
-        else:
+        elif not self.isEval:
             # make starting lives random to NN can learn to strategically
             # handle lives
             livesLeft = random.randint(STARTING_LIVES_MIN, STARTING_LIVES_MAX) - 1
@@ -148,33 +150,34 @@ class MarioLandSettings(EnvSettings):
             # can learn to use the powerups; also makes the environment more
             # stochastic
             curState = self.gameState()
-            if not self.isEval:
-                if random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
-                    # 0: small with star
-                    # 1: big
-                    # 2: big with star
-                    # 3: fire flower
-                    # 4: fire flower with star
-                    gotStar = False
-                    randPowerup = random.randint(0, 4)
-                    # TODO: change back when pyboy bug is fixed
-                    if False:  # randPowerup in (0, 2, 4):
-                        gotStar = True
-                        self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
-                        # set star song so timer functions correctly
-                        self.pyboy.set_memory_value(0xDFE8, 0x0C)
-                    if randPowerup != STATUS_SMALL:
-                        self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
-                        if randPowerup > 2:
-                            self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
+            if random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
+                # 0: small with star
+                # 1: big
+                # 2: big with star
+                # 3: fire flower
+                # 4: fire flower with star
+                gotStar = False
+                randPowerup = random.randint(0, 4)
+                # TODO: change back when pyboy bug is fixed
+                if False:  # randPowerup in (0, 2, 4):
+                    gotStar = True
+                    self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
+                    # set star song so timer functions correctly
+                    self.pyboy.set_memory_value(0xDFE8, 0x0C)
+                if randPowerup != STATUS_SMALL:
+                    self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
+                    if randPowerup > 2:
+                        self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
 
-                    prevState = curState
-                    curState = self.gameState()
-                    if gotStar:
-                        curState.gotStar = True
-                        curState.hasStar = True
-                        curState.isInvincible = True
-                    self._handlePowerup(prevState, curState)
+                prevState = curState
+                curState = self.gameState()
+                if gotStar:
+                    curState.gotStar = True
+                    curState.hasStar = True
+                    curState.isInvincible = True
+                self._handlePowerup(prevState, curState)
+        else:
+            curState = self.gameState()
 
         # set lives left
         livesTens = livesLeft // 10
@@ -183,6 +186,9 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL, livesTens)
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
         curState.livesLeft = livesLeft
+
+        # reset alive frames counter
+        self.framesAlive = 0
 
         # reset max level progress
         self.levelProgressMax = curState.xPos
@@ -236,14 +242,27 @@ class MarioLandSettings(EnvSettings):
 
             return DEATH_PUNISHMENT, curState
 
+        self.framesAlive += 1
+
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
+            levelClear = LEVEL_CLEAR_REWARD
+            # reward clearing a level with extra lives
+            levelClear += curState.livesLeft * LEVEL_CLEAR_LIVES_COEF_REWARD
+            # reward clearing a level while powered up
+            if curState.powerupStatus == STATUS_BIG:
+                levelClear += LEVEL_CLEAR_BIG_REWARD
+            elif curState.powerupStatus == STATUS_FIRE:
+                levelClear += LEVEL_CLEAR_FIRE_REWARD
+            # reward clearing a level faster
+            levelClear += ((STARTING_TIME * 40) - self.framesAlive) * LEVEL_CLEAR_TIME_COEF_REWARD
+
             # if we're evaluating and the level is cleared return, the
             # episode is over; otherwise load the next level directly
             # to avoid processing unnecessary frames and the AI playing
             # levels we don't want it to
             if self.isEval:
-                return LEVEL_CLEAR_REWARD, curState
+                return levelClear, curState
             else:
                 # load start of next level, not a level checkpoint
                 self.stateIdx += (2 - self.stateCheckpoint) + 1
@@ -253,7 +272,7 @@ class MarioLandSettings(EnvSettings):
                 # keep lives and powerup in new level
                 curState = self._loadLevel(prevState=prevState, transferState=True)
 
-            return LEVEL_CLEAR_REWARD, curState
+            return levelClear, curState
 
         # add time punishment every step to encourage speed more
         clock = CLOCK_PUNISHMENT
@@ -433,7 +452,7 @@ class MarioLandSettings(EnvSettings):
         return observationSpace(self.obsStack)
 
     def normalize(self) -> (bool, bool):
-        return False, True
+        return False, False
 
     def hyperParameters(self, algo: str) -> Dict[str, Any]:
         match algo:
