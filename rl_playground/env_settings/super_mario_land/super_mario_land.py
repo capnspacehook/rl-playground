@@ -37,9 +37,10 @@ class MarioLandSettings(EnvSettings):
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
         self.observationCaches = [
             deque(maxlen=obsStack),  # game area
-            deque(maxlen=obsStack),  # mario info
+            deque(maxlen=obsStack),  # mario features
             deque(maxlen=obsStack),  # entity IDs
-            deque(maxlen=obsStack),  # entity infos
+            deque(maxlen=obsStack),  # entity features
+            deque(maxlen=obsStack),  # scalar features
         ]
 
         self.isEval = isEval
@@ -210,11 +211,12 @@ class MarioLandSettings(EnvSettings):
             [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
             [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
             [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
+            [self.observationCaches[4].append(scalar) for _ in range(N_OBS_STACK)]
         else:
             curState.posReset = True
             self.gameStateCache.append(curState)
 
-        return combineObservations(self.observationCaches, scalar)
+        return combineObservations(self.observationCaches)
 
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()

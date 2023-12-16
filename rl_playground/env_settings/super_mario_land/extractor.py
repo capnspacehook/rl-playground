@@ -9,6 +9,7 @@ from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import MAX_TILE
 
 
+# TODO: update number in comments once NN architecture is stable
 class MarioLandExtractor(BaseFeaturesExtractor):
     def __init__(
         self,
@@ -24,8 +25,8 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         numStack, xDim, yDim = gameArea.shape
         scalar = observationSpace[SCALAR_OBS]
 
-        featuresDim = (
-            cnnHiddenLayers + (numStack * (marioHiddenLayers + entityHiddenLayers)) + scalar.shape[0]
+        featuresDim = cnnHiddenLayers + (
+            numStack * (marioHiddenLayers + entityHiddenLayers + scalar.shape[1])
         )
         super().__init__(observationSpace, features_dim=featuresDim)
 
@@ -95,13 +96,12 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         entities = self.entityFC(entities)  # (nStack, 10, entityHiddenLayers)
         entities = self.entityMaxPool(entities).squeeze(-2)  # (nStack, entityHiddenLayers)
 
-        marioEntities = th.cat((mario, entities), dim=-1)
-        marioEntities = th.flatten(marioEntities, start_dim=-2, end_dim=-1)
-
-        scalar = observations[SCALAR_OBS]  # (8)
+        scalar = observations[SCALAR_OBS]  # (nStack, 8)
+        features = th.cat((mario, entities, scalar), dim=-1)
+        features = th.flatten(features, start_dim=-2, end_dim=-1)
 
         allFeatures = th.cat(
-            (gameArea, marioEntities, scalar), dim=-1
+            (gameArea, features), dim=-1
         )  # cnnHiddenLayers+marioHiddenLayers+entityHiddenLayers+8
 
         return allFeatures

@@ -26,7 +26,7 @@ MUSHROOM_REWARD = 20
 FLOWER_REWARD = 20
 STAR_REWARD = 25
 HEART_REWARD = 30
-BOULDER_REWARD = 3
+BOULDER_REWARD = 5
 HIT_BOSS_REWARD = 5
 KILL_BOSS_REWARD = 25
 LEVEL_CLEAR_REWARD = 35
@@ -63,7 +63,7 @@ PPO_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
     "batch_size": 512,  # TODO: try 256
     "clip_range": 0.2,
-    "ent_coef": 1e-02,
+    "ent_coef": 7e-03,
     "gae_lambda": 0.98,
     "gamma": 0.995,
     "learning_rate": linear_schedule(3e-05),
