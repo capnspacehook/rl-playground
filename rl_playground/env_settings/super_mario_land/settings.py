@@ -69,7 +69,7 @@ PPO_HYPERPARAMS = {
     "learning_rate": linear_schedule(3e-05),
     "max_grad_norm": 1,
     "n_epochs": 5,
-    "n_steps": 1024,
+    "n_steps": 2048,
     "vf_coef": 0.5,
     "policy_kwargs": dict(
         activation_fn=nn.ReLU,
@@ -78,7 +78,7 @@ PPO_HYPERPARAMS = {
             # will be changed later
             device="auto",
         ),
-        net_arch=dict(pi=[512, 512], vf=[512, 512]),
+        net_arch=dict(pi=[1024, 1024], vf=[1024, 1024]),
         normalize_images=False,
         share_features_extractor=True,
     ),
