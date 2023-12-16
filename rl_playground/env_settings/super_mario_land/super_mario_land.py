@@ -254,8 +254,6 @@ class MarioLandSettings(EnvSettings):
                 levelClear += LEVEL_CLEAR_BIG_REWARD
             elif curState.powerupStatus == STATUS_FIRE:
                 levelClear += LEVEL_CLEAR_FIRE_REWARD
-            # reward clearing a level faster
-            levelClear += ((STARTING_TIME * 40) - self.framesAlive) * LEVEL_CLEAR_TIME_COEF_REWARD
 
             # if we're evaluating and the level is cleared return, the
             # episode is over; otherwise load the next level directly
@@ -281,7 +279,6 @@ class MarioLandSettings(EnvSettings):
         movement = 0
         if xSpeed > 0:
             movement = xSpeed * FORWARD_REWARD_COEF
-            movement += (curState.levelProgressMax - prevState.levelProgressMax) * PROGRESS_REWARD_COEF
         elif xSpeed < 0:
             movement = xSpeed * BACKWARD_PUNISHMENT_COEF
 
