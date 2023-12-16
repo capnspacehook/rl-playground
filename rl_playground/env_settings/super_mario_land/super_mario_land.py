@@ -48,7 +48,6 @@ class MarioLandSettings(EnvSettings):
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
-        self.framesAlive = 0
         self.invincibilityTimer = 0
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
@@ -88,7 +87,7 @@ class MarioLandSettings(EnvSettings):
 
         curState = self._loadLevel()
 
-        return self._reset(curState), curState, True
+        return self._reset(curState, True), curState, True
 
     def _loadLevel(
         self, prevState: MarioLandGameState | None = None, transferState: bool = False
@@ -187,30 +186,33 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
         curState.livesLeft = livesLeft
 
-        # reset alive frames counter
-        self.framesAlive = 0
-
         # reset max level progress
         self.levelProgressMax = curState.xPos
         curState.levelProgressMax = curState.xPos
 
         return curState
 
-    def _reset(self, curState: MarioLandGameState) -> Dict[str, Any]:
+    def _reset(self, curState: MarioLandGameState, resetCaches: bool) -> Dict[str, Any]:
         self.evalNoProgress = 0
         self.onGroundFor = 0
 
         # reset the game state cache
-        [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
+        if resetCaches:
+            [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
 
-        # reset the observation cache
         gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(
             self.pyboy, self.tileSet, self.gameStateCache
         )
-        [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
-        [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
+
+        # reset the observation cache
+        if resetCaches:
+            [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
+            [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
+            [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
+            [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
+        else:
+            curState.posReset = True
+            self.gameStateCache.append(curState)
 
         return combineObservations(self.observationCaches, scalar)
 
@@ -238,11 +240,11 @@ class MarioLandSettings(EnvSettings):
                 self.pyboy.tick()
 
             curState = self.gameState()
-            self._reset(curState)
+            # don't reset state and observation caches so the agent can
+            # see that it died
+            self._reset(curState, False)
 
             return DEATH_PUNISHMENT, curState
-
-        self.framesAlive += 1
 
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
@@ -269,6 +271,9 @@ class MarioLandSettings(EnvSettings):
 
                 # keep lives and powerup in new level
                 curState = self._loadLevel(prevState=prevState, transferState=True)
+                # don't reset state and observation caches so the agent can
+                # see that it started a new level
+                self._reset(curState, False)
 
             return levelClear, curState
 

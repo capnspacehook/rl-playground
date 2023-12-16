@@ -93,8 +93,18 @@ def getEntityIDsAndInfo(
     curState.rawXSpeed = np.clip(curState.xPos - prevState.xPos, -MARIO_MAX_X_SPEED, MARIO_MAX_X_SPEED)
     curState.rawYSpeed = np.clip(curState.yPos - prevState.yPos, -MARIO_MAX_Y_SPEED, MARIO_MAX_Y_SPEED)
 
-    curState.meanXSpeed = np.mean([s.rawXSpeed for s in states])
-    curState.meanYSpeed = np.mean([s.rawYSpeed for s in states])
+    # only consider speeds in states of the same life or level as the
+    # current state
+    resetIdx = -1
+    for i, s in enumerate(states):
+        if s.posReset:
+            resetIdx = i
+            break
+
+    # don't calculate mean speed if the latest state was the reset one
+    if resetIdx != N_STATE_STACK - 1:
+        curState.meanXSpeed = np.mean([states[i].rawXSpeed for i in range(resetIdx + 1, N_STATE_STACK)])
+        curState.meanYSpeed = np.mean([states[i].rawYSpeed for i in range(resetIdx + 1, N_STATE_STACK)])
     curState.xAccel = curState.meanXSpeed - prevState.meanXSpeed
     curState.yAccel = curState.meanYSpeed - prevState.meanYSpeed
 

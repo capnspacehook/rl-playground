@@ -69,6 +69,7 @@ class MarioLandGameState(GameState):
         self.meanYSpeed = 0
         self.xAccel = 0
         self.yAccel = 0
+        self.posReset = False
 
         world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
         self.world = (world >> 4, world & 0x0F)
