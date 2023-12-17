@@ -1,0 +1,46 @@
+diff --git a/pyboy/plugins/base_plugin.py b/pyboy/plugins/base_plugin.py
+index 3427ff3..7176a3b 100644
+--- a/pyboy/plugins/base_plugin.py
++++ b/pyboy/plugins/base_plugin.py
+@@ -235,25 +235,11 @@ class PyBoyGameWrapper(PyBoyPlugin):
+                     _x] = s.tile_identifier + self.sprite_offset # Adding offset to try to seperate sprites from tiles
+         return tiles_matrix
+ 
+-    def _game_area_np(self, observation_type="tiles"):
+-        if observation_type == "tiles":
++    def _game_area_np(self, tileset=None):
++        if tileset is None:
+             return np.asarray(self.game_area(), dtype=np.uint16)
+-        elif observation_type == "compressed":
+-            try:
+-                return self.tiles_compressed[np.asarray(self.game_area(), dtype=np.uint16)]
+-            except AttributeError:
+-                raise AttributeError(
+-                    f"Game wrapper miss the attribute tiles_compressed for observation_type : {observation_type}"
+-                )
+-        elif observation_type == "minimal":
+-            try:
+-                return self.tiles_minimal[np.asarray(self.game_area(), dtype=np.uint16)]
+-            except AttributeError:
+-                raise AttributeError(
+-                    f"Game wrapper miss the attribute tiles_minimal for observation_type : {observation_type}"
+-                )
+-        else:
+-            raise ValueError(f"Invalid observation_type : {observation_type}")
++
++        return tileset[np.asarray(self.game_area(), dtype=np.uint16)]
+ 
+     def _sum_number_on_screen(self, x, y, length, blank_tile_identifier, tile_identifier_offset):
+         number = 0
+diff --git a/pyboy/plugins/game_wrapper_super_mario_land.py b/pyboy/plugins/game_wrapper_super_mario_land.py
+index b2cb059..9dcd63e 100644
+--- a/pyboy/plugins/game_wrapper_super_mario_land.py
++++ b/pyboy/plugins/game_wrapper_super_mario_land.py
+@@ -138,6 +138,7 @@ class GameWrapperSuperMarioLand(PyBoyGameWrapper):
+     def post_tick(self):
+         self._tile_cache_invalid = True
+         self._sprite_cache_invalid = True
++        return
+ 
+         world_level = self.pyboy.get_memory_value(ADDR_WORLD_LEVEL)
+         self.world = world_level >> 4, world_level & 0x0F
