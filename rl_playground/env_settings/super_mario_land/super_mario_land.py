@@ -50,6 +50,7 @@ class MarioLandSettings(EnvSettings):
         self.evalStateCounter = 0
         self.evalNoProgress = 0
         self.invincibilityTimer = 0
+        self.deathCounter = 0
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
         self.stateCheckpoint = 0
@@ -88,7 +89,7 @@ class MarioLandSettings(EnvSettings):
 
         curState = self._loadLevel()
 
-        return self._reset(curState, True), curState, True
+        return self._reset(curState, True, STARTING_TIME), curState, True
 
     def _loadLevel(
         self, prevState: MarioLandGameState | None = None, transferState: bool = False
@@ -111,13 +112,6 @@ class MarioLandSettings(EnvSettings):
         if self.stateCheckpoint != 0:
             for _ in range(random.randint(0, RANDOM_NOOP_FRAMES)):
                 self.pyboy.tick()
-
-        # set level timer
-        timerHundreds = STARTING_TIME // 100
-        timerTens = STARTING_TIME - (timerHundreds * 100)
-        self.pyboy.set_memory_value(TIMER_HUNDREDS, timerHundreds)
-        self.pyboy.set_memory_value(TIMER_TENS, dec_to_bcm(timerTens))
-        self.pyboy.set_memory_value(TIMER_FRAMES, 0x28)
 
         # set score to 0
         for i in range(3):
@@ -191,9 +185,12 @@ class MarioLandSettings(EnvSettings):
         self.levelProgressMax = curState.xPos
         curState.levelProgressMax = curState.xPos
 
+        # reset death counter
+        self.deathCounter = 0
+
         return curState
 
-    def _reset(self, curState: MarioLandGameState, resetCaches: bool) -> Dict[str, Any]:
+    def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
         self.evalNoProgress = 0
         self.onGroundFor = 0
 
@@ -205,8 +202,8 @@ class MarioLandSettings(EnvSettings):
             self.pyboy, self.tileSet, self.gameStateCache
         )
 
-        # reset the observation cache
         if resetCaches:
+            # reset the observation cache
             [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
             [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
             [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
@@ -215,6 +212,13 @@ class MarioLandSettings(EnvSettings):
         else:
             curState.posReset = True
             self.gameStateCache.append(curState)
+
+        # set level timer
+        timerHundreds = timer // 100
+        timerTens = timer - (timerHundreds * 100)
+        self.pyboy.set_memory_value(TIMER_HUNDREDS, timerHundreds)
+        self.pyboy.set_memory_value(TIMER_TENS, dec_to_bcm(timerTens))
+        self.pyboy.set_memory_value(TIMER_FRAMES, 0x28)
 
         return combineObservations(self.observationCaches)
 
@@ -226,9 +230,15 @@ class MarioLandSettings(EnvSettings):
 
         # return flat punishment on mario's death
         if self._isDead(curState):
+            consecutiveDeaths = self.deathCounter * DEATH_SCALE
+            self.deathCounter += 1
+
             if curState.livesLeft == 0:
                 # no lives left, just return so this episode can be terminated
-                return GAME_OVER_PUNISHMENT, curState
+                return GAME_OVER_PUNISHMENT + consecutiveDeaths, curState
+
+            # don't let the game set the timer back to max time
+            timer = min(curState.timeLeft + DEATH_EXTRA_TIME, STARTING_TIME)
 
             # skip frames where mario is dying
             statusTimer = curState.statusTimer
@@ -244,9 +254,9 @@ class MarioLandSettings(EnvSettings):
             curState = self.gameState()
             # don't reset state and observation caches so the agent can
             # see that it died
-            self._reset(curState, False)
+            self._reset(curState, False, timer)
 
-            return DEATH_PUNISHMENT, curState
+            return DEATH_PUNISHMENT + consecutiveDeaths, curState
 
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
@@ -275,7 +285,7 @@ class MarioLandSettings(EnvSettings):
                 curState = self._loadLevel(prevState=prevState, transferState=True)
                 # don't reset state and observation caches so the agent can
                 # see that it started a new level
-                self._reset(curState, False)
+                self._reset(curState, False, STARTING_TIME)
 
             return levelClear, curState
 

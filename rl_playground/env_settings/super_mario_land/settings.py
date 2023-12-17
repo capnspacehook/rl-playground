@@ -8,11 +8,13 @@ from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtra
 N_OBS_STACK = 6  # number of observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
-# General env settings
+# Time settings
 STARTING_TIME = 400
+DEATH_EXTRA_TIME = 30
 
 # Reward values
 HIT_PUNISHMENT = -5.0
+DEATH_SCALE = -10
 DEATH_PUNISHMENT = -30.0
 GAME_OVER_PUNISHMENT = -50
 # TODO: linearly increase to encourage progress over speed
@@ -63,10 +65,10 @@ PPO_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
     "batch_size": 512,  # TODO: try 256
     "clip_range": 0.2,
-    "ent_coef": 7e-03,
+    "ent_coef": 3e-03,
     "gae_lambda": 0.98,
     "gamma": 0.995,
-    "learning_rate": linear_schedule(3e-05),
+    "learning_rate": linear_schedule(2e-05),
     "max_grad_norm": 1,
     "n_epochs": 5,
     "n_steps": 2048,
