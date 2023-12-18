@@ -65,10 +65,10 @@ PPO_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
     "batch_size": 512,  # TODO: try 256
     "clip_range": 0.2,
-    "ent_coef": 3e-03,
+    "ent_coef": 7e-03,
     "gae_lambda": 0.98,
     "gamma": 0.995,
-    "learning_rate": linear_schedule(2e-05),
+    "learning_rate": linear_schedule(3e-05),
     "max_grad_norm": 1,
     "n_epochs": 5,
     "n_steps": 2048,
