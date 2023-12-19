@@ -6,7 +6,6 @@ import random
 from pathlib import Path
 
 import numpy as np
-import torch.nn as nn
 from gymnasium.spaces import Discrete, Space
 from pyboy import PyBoy, WindowEvent
 
