@@ -25,9 +25,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         numStack, xDim, yDim = gameArea.shape
         scalar = observationSpace[SCALAR_OBS]
 
-        featuresDim = cnnHiddenLayers + (
-            numStack * (marioHiddenLayers + entityHiddenLayers + scalar.shape[1])
-        )
+        featuresDim = cnnHiddenLayers + marioHiddenLayers + entityHiddenLayers + scalar.shape[0]
         super().__init__(observationSpace, features_dim=featuresDim)
 
         # gameArea (nStack, 16, 20)
@@ -48,37 +46,32 @@ class MarioLandExtractor(BaseFeaturesExtractor):
 
         marioInfo = observationSpace[MARIO_INFO_OBS]
 
-        # marioInfo (nStack, 7) -> (nStack, hiddenLayers)
+        # marioInfo (7) -> (hiddenLayers)
         self.marioFC = nn.Sequential(
-            nn.Linear(marioInfo.shape[1], marioHiddenLayers, device=device),
+            nn.Linear(marioInfo.shape[0], marioHiddenLayers, device=device),
             activationFn(),
             nn.Linear(marioHiddenLayers, marioHiddenLayers, device=device),
             activationFn(),
         )
 
-        # marioInfo (nStack, hiddenLayers) -> (1, hiddenLayers)
-        self.marioMaxPool = nn.AdaptiveMaxPool2d(output_size=(1, marioHiddenLayers))
-        # marioInfo squeeze -> (hiddenLayers)
-
         entityIDs = observationSpace[ENTITY_ID_OBS]
         entityInfos = observationSpace[ENTITY_INFO_OBS]
 
-        # entityIDs (nStack, 10) -> (nStack, 10, embeddingDimensions)
-        self.entityIDEmbedding = nn.Embedding(entityIDs.high[0][0], embeddingDimensions, device=device)
-        # entities concat -> (nStack, 10, 8+embeddingDimensions)
+        # entityIDs (10) -> (10, embeddingDimensions)
+        self.entityIDEmbedding = nn.Embedding(entityIDs.high[0], embeddingDimensions, device=device)
+        # entities concat -> (10, 8+embeddingDimensions)
 
-        # entityInfos (nStack, 10, 8) -> (nStack, 10, hiddenLayers)
+        # entityInfos (10, 8) -> (10, hiddenLayers)
         self.entityFC = nn.Sequential(
-            nn.Linear(entityInfos.shape[2] + embeddingDimensions, entityHiddenLayers, device=device),
+            nn.Linear(entityInfos.shape[1] + embeddingDimensions, entityHiddenLayers, device=device),
             activationFn(),
             nn.Linear(entityHiddenLayers, entityHiddenLayers, device=device),
             activationFn(),
         )
 
-        # entityInfos (nStack, 10, hiddenLayers) -> (nStack, 1, hiddenLayers)
+        # TODO: try reducing entityHiddenLayers and not max pooling
+        # entityInfos (10, hiddenLayers) -> (1, hiddenLayers)
         self.entityMaxPool = nn.AdaptiveMaxPool2d(output_size=(1, entityHiddenLayers))
-        # entityInfos squeeze -> (nStack, hiddenLayers)
-        # entityInfos (nStack, hiddenLayers) -> (1, hiddenLayers)
         # entityInfos squeeze -> (hiddenLayers)
 
     def forward(self, observations: TensorDict) -> th.Tensor:
@@ -86,23 +79,19 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         gameArea = observations[GAME_AREA_OBS].to(th.float32) / float(MAX_TILE)
         gameArea = self.gameAreaFC(self.gameAreaCNN(gameArea))  # (cnnHiddenLayers,)
 
-        marioInfo = observations[MARIO_INFO_OBS]  # (nStack, 7)
-        mario = self.marioFC(marioInfo)  # (nStack, marioHiddenLayers)
+        marioInfo = observations[MARIO_INFO_OBS]  # (7)
+        mario = self.marioFC(marioInfo)  # (marioHiddenLayers)
 
-        entityIDs = observations[ENTITY_ID_OBS].to(th.int)  # (nStack, 10)
-        embeddedEntityIDs = self.entityIDEmbedding(entityIDs)  # (nStack, 10, embeddingDimensions)
-        entityInfos = observations[ENTITY_INFO_OBS]  # (nStack, 10, 8)
-        entities = th.cat((embeddedEntityIDs, entityInfos), dim=-1)  # (nStack, 10, 8+embeddingDimensions)
-        entities = self.entityFC(entities)  # (nStack, 10, entityHiddenLayers)
-        entities = self.entityMaxPool(entities).squeeze(-2)  # (nStack, entityHiddenLayers)
+        entityIDs = observations[ENTITY_ID_OBS].to(th.int)  # (10)
+        embeddedEntityIDs = self.entityIDEmbedding(entityIDs)  # (10, embeddingDimensions)
+        entityInfos = observations[ENTITY_INFO_OBS]  # (10, 8)
+        entities = th.cat((embeddedEntityIDs, entityInfos), dim=-1)  # (10, 8+embeddingDimensions)
+        entities = self.entityFC(entities)  # (10, entityHiddenLayers)
+        entities = self.entityMaxPool(entities).squeeze(-2)  # (entityHiddenLayers)
 
-        scalar = observations[SCALAR_OBS]  # (nStack, 8)
-        features = th.cat((mario, entities, scalar), dim=-1)
-        features = th.flatten(features, start_dim=-2, end_dim=-1)
+        scalar = observations[SCALAR_OBS]  # (8)
 
-        allFeatures = th.cat(
-            (gameArea, features), dim=-1
-        )  # cnnHiddenLayers+marioHiddenLayers+entityHiddenLayers+8
+        allFeatures = th.cat((gameArea, mario, entities, scalar), dim=-1)
 
         return allFeatures
 

@@ -10,7 +10,7 @@ from typing import Dict
 import numpy as np
 import pandas
 
-from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.utils import get_device, set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 import torch
@@ -382,7 +382,7 @@ if __name__ == "__main__":
         args.algorithm = args.algorithm.lower()
         match args.algorithm:
             case "ppo":
-                args.algo = PPO
+                args.algo = RecurrentPPO
 
                 if args.save_replay_buffers:
                     print("PPO doesn't have a replay buffer")

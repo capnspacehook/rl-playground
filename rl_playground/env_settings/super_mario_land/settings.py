@@ -5,7 +5,6 @@ import torch.nn as nn
 from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtractor
 
 # Observation settings
-N_OBS_STACK = 6  # number of observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Time settings
@@ -62,13 +61,13 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
 
 
 PPO_HYPERPARAMS = {
-    "policy": "MultiInputPolicy",
+    "policy": "MultiInputLstmPolicy",
     "batch_size": 512,  # TODO: try 256
     "clip_range": 0.2,
     "ent_coef": 7e-03,
     "gae_lambda": 0.98,
     "gamma": 0.995,
-    "learning_rate": linear_schedule(3e-05),
+    "learning_rate": 3e-05,
     "max_grad_norm": 1,
     "n_epochs": 5,
     "n_steps": 2048,
@@ -80,7 +79,7 @@ PPO_HYPERPARAMS = {
             # will be changed later
             device="auto",
         ),
-        net_arch=dict(pi=[1024, 1024], vf=[1024, 1024]),
+        lstm_hidden_size=512,
         normalize_images=False,
         share_features_extractor=True,
     ),

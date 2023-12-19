@@ -12,64 +12,38 @@ from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState, 
 from rl_playground.env_settings.super_mario_land.settings import N_STATE_STACK
 
 
-def observationSpace(obsStack: int) -> spaces.Dict:
+def observationSpace() -> spaces.Dict:
     return spaces.Dict(
         {
             GAME_AREA_OBS: spaces.Box(
-                low=0, high=MAX_TILE, shape=(obsStack, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
+                low=0, high=MAX_TILE, shape=(1, GAME_AREA_HEIGHT, GAME_AREA_WIDTH), dtype=np.uint8
             ),
-            MARIO_INFO_OBS: spaces.Box(low=0, high=1, shape=(obsStack, MARIO_INFO_SIZE), dtype=np.float32),
-            ENTITY_ID_OBS: spaces.Box(
-                low=0, high=MAX_ENTITY_ID, shape=(obsStack, N_ENTITIES), dtype=np.uint8
-            ),
+            MARIO_INFO_OBS: spaces.Box(low=0, high=1, shape=(MARIO_INFO_SIZE,), dtype=np.float32),
+            ENTITY_ID_OBS: spaces.Box(low=0, high=MAX_ENTITY_ID, shape=(N_ENTITIES,), dtype=np.uint8),
             ENTITY_INFO_OBS: spaces.Box(
-                low=0, high=1, shape=(obsStack, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
+                low=0, high=1, shape=(N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32
             ),
-            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(obsStack, SCALAR_SIZE), dtype=np.float32),
+            SCALAR_OBS: spaces.Box(low=0, high=1, shape=(SCALAR_SIZE,), dtype=np.float32),
         }
     )
-
-
-def getStackedObservation(
-    pyboy: PyBoy,
-    tileSet: np.ndarray,
-    obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]],
-    states: Deque[MarioLandGameState],
-) -> Dict[str, Any]:
-    gameArea, marioInfo, entityIDs, entityInfos, scalar = getObservations(pyboy, tileSet, states)
-
-    obsCache[0].append(gameArea)
-    obsCache[1].append(marioInfo)
-    obsCache[2].append(entityIDs)
-    obsCache[3].append(entityInfos)
-    obsCache[4].append(scalar)
-
-    return combineObservations(obsCache)
 
 
 def getObservations(
     pyboy: PyBoy,
     tileSet: np.ndarray,
     states: Deque[MarioLandGameState],
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    return (
-        getGameArea(pyboy, tileSet, states[-1]),
-        *getEntityIDsAndInfo(states),
-        getScalarFeatures(states[-1]),
-    )
-
-
-def combineObservations(
-    obsCache: Tuple[
-        Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]
-    ],
 ) -> Dict[str, Any]:
+    gameArea = getGameArea(pyboy, tileSet, states[-1])
+    gameArea = gameArea[np.newaxis, ...]
+    marioFeatures, entityIDs, entityFeatures = getEntityIDsAndInfo(states)
+    scalarFeatures = getScalarFeatures(states[-1])
+
     return {
-        GAME_AREA_OBS: np.squeeze(np.array(obsCache[0])),
-        MARIO_INFO_OBS: np.squeeze(np.array(obsCache[1])),
-        ENTITY_ID_OBS: np.squeeze(np.array(obsCache[2])),
-        ENTITY_INFO_OBS: np.squeeze(np.array(obsCache[3])),
-        SCALAR_OBS: np.squeeze(np.array(obsCache[4])),
+        GAME_AREA_OBS: gameArea,
+        MARIO_INFO_OBS: marioFeatures,
+        ENTITY_ID_OBS: entityIDs,
+        ENTITY_INFO_OBS: entityFeatures,
+        SCALAR_OBS: scalarFeatures,
     }
 
 
@@ -243,13 +217,6 @@ def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
 
 
 def scaledEncoding(val: int, max: int, minIsZero: bool) -> float:
-    # if val > max:
-    #     print(f"{val} > {max}")
-    # elif minIsZero and val < 0:
-    #     print(f"{val} < 0")
-    # elif not minIsZero and val < -max:
-    #     print(f"{val} < {-max}")
-
     scaled = 0.0
     if minIsZero:
         scaled = val / max

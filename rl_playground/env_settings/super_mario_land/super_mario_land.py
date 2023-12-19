@@ -12,12 +12,7 @@ from pyboy import PyBoy, WindowEvent
 from rl_playground.env_settings.env_settings import EnvSettings
 from rl_playground.env_settings.super_mario_land.constants import MARIO_MAX_X_SPEED
 from rl_playground.env_settings.super_mario_land.game_area import bouncing_boulder_tiles, worldTilesets
-from rl_playground.env_settings.super_mario_land.observation import (
-    combineObservations,
-    getObservations,
-    getStackedObservation,
-    observationSpace,
-)
+from rl_playground.env_settings.super_mario_land.observation import getObservations, observationSpace
 from rl_playground.env_settings.super_mario_land.ram import *
 from rl_playground.env_settings.super_mario_land.settings import *
 
@@ -27,24 +22,15 @@ class MarioLandSettings(EnvSettings):
         self,
         pyboy: PyBoy,
         isEval: bool,
-        obsStack: int = N_OBS_STACK,
         stateDir: Path = Path("states", "super_mario_land"),
     ):
         self.pyboy = pyboy
         self.gameWrapper = self.pyboy.game_wrapper()
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
-        self.observationCaches = [
-            deque(maxlen=obsStack),  # game area
-            deque(maxlen=obsStack),  # mario features
-            deque(maxlen=obsStack),  # entity IDs
-            deque(maxlen=obsStack),  # entity features
-            deque(maxlen=obsStack),  # scalar features
-        ]
 
         self.isEval = isEval
         self.tileSet = None
-        self.obsStack = obsStack
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
@@ -87,8 +73,9 @@ class MarioLandSettings(EnvSettings):
             self.stateIdx = (3 * level) + checkpoint
 
         curState = self._loadLevel()
+        self._reset(curState, True, STARTING_TIME)
 
-        return self._reset(curState, True, STARTING_TIME), curState, True
+        return self.observation(curState, curState), curState, True
 
     def _loadLevel(
         self, prevState: MarioLandGameState | None = None, transferState: bool = False
@@ -189,25 +176,13 @@ class MarioLandSettings(EnvSettings):
 
         return curState
 
-    def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
+    def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int):
         self.evalNoProgress = 0
         self.onGroundFor = 0
 
         # reset the game state cache
         if resetCaches:
             [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
-
-        gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(
-            self.pyboy, self.tileSet, self.gameStateCache
-        )
-
-        if resetCaches:
-            # reset the observation cache
-            [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[4].append(scalar) for _ in range(N_OBS_STACK)]
         else:
             curState.posReset = True
             self.gameStateCache.append(curState)
@@ -218,8 +193,6 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(TIMER_HUNDREDS, timerHundreds)
         self.pyboy.set_memory_value(TIMER_TENS, dec_to_bcm(timerTens))
         self.pyboy.set_memory_value(TIMER_FRAMES, 0x28)
-
-        return combineObservations(self.observationCaches)
 
     def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
         curState = self.gameState()
@@ -418,7 +391,7 @@ class MarioLandSettings(EnvSettings):
         return powerup
 
     def observation(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> Any:
-        return getStackedObservation(self.pyboy, self.tileSet, self.observationCaches, self.gameStateCache)
+        return getObservations(self.pyboy, self.tileSet, self.gameStateCache)
 
     def terminated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
         return self._isDead(curState) and curState.livesLeft == 0
@@ -462,7 +435,7 @@ class MarioLandSettings(EnvSettings):
         return actions, Discrete(len(actions))
 
     def observationSpace(self) -> Space:
-        return observationSpace(self.obsStack)
+        return observationSpace()
 
     def normalize(self) -> (bool, bool):
         return False, True
