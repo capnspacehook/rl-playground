@@ -73,12 +73,13 @@ PPO_HYPERPARAMS = {
     "n_steps": 2048,
     "vf_coef": 0.5,
     "policy_kwargs": dict(
-        activation_fn=nn.ReLU,
         features_extractor_class=MarioLandExtractor,
         features_extractor_kwargs=dict(
             # will be changed later
             device="auto",
         ),
+        # we don't want FC layers after the LSTM
+        net_arch=dict(pi=[], vf=[]),
         lstm_hidden_size=512,
         normalize_images=False,
         share_features_extractor=True,
