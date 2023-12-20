@@ -56,10 +56,6 @@ class MarioLandExtractor(BaseFeaturesExtractor):
             activationFn(),
         )
 
-        # marioInfo (nStack, hiddenLayers) -> (1, hiddenLayers)
-        self.marioMaxPool = nn.AdaptiveMaxPool2d(output_size=(1, marioHiddenLayers))
-        # marioInfo squeeze -> (hiddenLayers)
-
         entityIDs = observationSpace[ENTITY_ID_OBS]
         entityInfos = observationSpace[ENTITY_INFO_OBS]
 
@@ -78,8 +74,6 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         # entityInfos (nStack, 10, hiddenLayers) -> (nStack, 1, hiddenLayers)
         self.entityMaxPool = nn.AdaptiveMaxPool2d(output_size=(1, entityHiddenLayers))
         # entityInfos squeeze -> (nStack, hiddenLayers)
-        # entityInfos (nStack, hiddenLayers) -> (1, hiddenLayers)
-        # entityInfos squeeze -> (hiddenLayers)
 
     def forward(self, observations: TensorDict) -> th.Tensor:
         # normalize game area
