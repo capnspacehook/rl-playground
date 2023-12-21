@@ -118,6 +118,7 @@ base_tiles = [
     mushroom,
     flower,
     star,
+    heart,
     moving_block,
     crush_blocks,
     falling_block,

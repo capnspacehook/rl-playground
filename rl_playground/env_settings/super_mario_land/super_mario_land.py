@@ -27,7 +27,6 @@ class MarioLandSettings(EnvSettings):
         self,
         pyboy: PyBoy,
         isEval: bool,
-        obsStack: int = N_OBS_STACK,
         stateDir: Path = Path("states", "super_mario_land"),
     ):
         self.pyboy = pyboy
@@ -35,16 +34,15 @@ class MarioLandSettings(EnvSettings):
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
         self.observationCaches = [
-            deque(maxlen=obsStack),  # game area
-            deque(maxlen=obsStack),  # mario features
-            deque(maxlen=obsStack),  # entity IDs
-            deque(maxlen=obsStack),  # entity features
-            deque(maxlen=obsStack),  # scalar features
+            deque(maxlen=N_GAME_AREA_STACK),  # game area
+            deque(maxlen=N_MARIO_OBS_STACK),  # mario features
+            deque(maxlen=N_ENTITY_OBS_STACK),  # entity IDs
+            deque(maxlen=N_ENTITY_OBS_STACK),  # entity features
+            deque(maxlen=N_SCALAR_OBS_STACK),  # scalar features
         ]
 
         self.isEval = isEval
         self.tileSet = None
-        self.obsStack = obsStack
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalNoProgress = 0
@@ -203,11 +201,11 @@ class MarioLandSettings(EnvSettings):
 
         if resetCaches:
             # reset the observation cache
-            [self.observationCaches[0].append(gameArea) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[1].append(marioInfo) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[2].append(entityID) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[3].append(entityInfo) for _ in range(N_OBS_STACK)]
-            [self.observationCaches[4].append(scalar) for _ in range(N_OBS_STACK)]
+            [self.observationCaches[0].append(gameArea) for _ in range(N_GAME_AREA_STACK)]
+            [self.observationCaches[1].append(marioInfo) for _ in range(N_MARIO_OBS_STACK)]
+            [self.observationCaches[2].append(entityID) for _ in range(N_ENTITY_OBS_STACK)]
+            [self.observationCaches[3].append(entityInfo) for _ in range(N_ENTITY_OBS_STACK)]
+            [self.observationCaches[4].append(scalar) for _ in range(N_SCALAR_OBS_STACK)]
         else:
             curState.posReset = True
             self.gameStateCache.append(curState)
@@ -462,7 +460,7 @@ class MarioLandSettings(EnvSettings):
         return actions, Discrete(len(actions))
 
     def observationSpace(self) -> Space:
-        return observationSpace(self.obsStack)
+        return observationSpace()
 
     def normalize(self) -> (bool, bool):
         return False, True
