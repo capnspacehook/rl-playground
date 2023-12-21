@@ -5,7 +5,10 @@ import torch.nn as nn
 from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtractor
 
 # Observation settings
-N_OBS_STACK = 6  # number of observations to stack
+N_GAME_AREA_STACK = 6  # number of game area observaions to stack
+N_MARIO_OBS_STACK = 6  # number of mario observations to stack
+N_ENTITY_OBS_STACK = 4  # number of entity observations to stack
+N_SCALAR_OBS_STACK = 6  # number of scalar observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Time settings
@@ -80,7 +83,7 @@ PPO_HYPERPARAMS = {
             # will be changed later
             device="auto",
         ),
-        net_arch=dict(pi=[1024, 1024], vf=[1024, 1024]),
+        net_arch=dict(pi=[2048, 2048], vf=[2048, 2048]),
         normalize_images=False,
         share_features_extractor=True,
     ),
