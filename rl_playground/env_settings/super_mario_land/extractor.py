@@ -17,9 +17,9 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         device: str,
         activationFn: nn.Module = nn.ReLU,
         cnnHiddenLayers: int = 128,
-        marioHiddenLayers: int = 64,
+        marioHiddenLayers: int = 32,
         embeddingDimensions: int = 8,
-        entityHiddenLayers: int = 64,
+        entityHiddenLayers: int = 32,
     ) -> None:
         gameArea = observationSpace[GAME_AREA_OBS]
         gameAreaStack, xDim, yDim = gameArea.shape

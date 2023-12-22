@@ -7,8 +7,8 @@ from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtra
 # Observation settings
 N_GAME_AREA_STACK = 6  # number of game area observaions to stack
 N_MARIO_OBS_STACK = 6  # number of mario observations to stack
-N_ENTITY_OBS_STACK = 4  # number of entity observations to stack
-N_SCALAR_OBS_STACK = 6  # number of scalar observations to stack
+N_ENTITY_OBS_STACK = 6  # number of entity observations to stack
+N_SCALAR_OBS_STACK = 4  # number of scalar observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Time settings
