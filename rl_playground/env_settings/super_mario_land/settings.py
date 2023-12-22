@@ -30,7 +30,8 @@ BACKWARD_PUNISHMENT_COEF = 0.25
 MUSHROOM_REWARD = 20
 # TODO: add reward for killing enemies with fireballs
 FLOWER_REWARD = 20
-STAR_REWARD = 25
+# TODO: make reward once I can figure out how to mitigate/fix star hang
+STAR_REWARD = -25
 HEART_REWARD = 30
 BOULDER_REWARD = 5
 HIT_BOSS_REWARD = 5
@@ -67,14 +68,14 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
 
 PPO_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
-    "batch_size": 512,  # TODO: try 256
+    "batch_size": 128,
     "clip_range": 0.2,
     "ent_coef": 7e-03,
     "gae_lambda": 0.98,
     "gamma": 0.995,
     "learning_rate": 3e-05,
     "max_grad_norm": 1,
-    "n_epochs": 5,
+    "n_epochs": 10,
     "n_steps": 2048,
     "vf_coef": 0.5,
     "policy_kwargs": dict(
