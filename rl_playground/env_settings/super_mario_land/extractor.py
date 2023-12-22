@@ -4,7 +4,6 @@ from gymnasium import spaces
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, TensorDict
 import torch as th
 from torch import nn
-from rational.torch import Rational
 
 from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import MAX_TILE
@@ -16,7 +15,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         self,
         observationSpace: spaces.Dict,
         device: str,
-        activationFn: nn.Module = Rational,
+        activationFn: nn.Module = nn.ReLU,
         cnnHiddenLayers: int = 128,
         marioHiddenLayers: int = 64,
         embeddingDimensions: int = 8,

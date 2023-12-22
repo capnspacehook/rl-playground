@@ -1,7 +1,6 @@
 from typing import Callable, Union
 
 import torch.nn as nn
-from rational.torch import Rational
 
 from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtractor
 
@@ -79,7 +78,7 @@ PPO_HYPERPARAMS = {
     "n_steps": 2048,
     "vf_coef": 0.5,
     "policy_kwargs": dict(
-        activation_fn=Rational,
+        activation_fn=nn.ReLU,
         features_extractor_class=MarioLandExtractor,
         features_extractor_kwargs=dict(
             # will be changed later
