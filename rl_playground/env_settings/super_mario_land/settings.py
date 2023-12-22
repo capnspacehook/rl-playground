@@ -8,7 +8,7 @@ from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtra
 # Observation settings
 N_GAME_AREA_STACK = 6  # number of game area observaions to stack
 N_MARIO_OBS_STACK = 6  # number of mario observations to stack
-N_ENTITY_OBS_STACK = 6  # number of entity observations to stack
+N_ENTITY_OBS_STACK = 4  # number of entity observations to stack
 N_SCALAR_OBS_STACK = 6  # number of scalar observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
@@ -30,7 +30,7 @@ BACKWARD_PUNISHMENT_COEF = 0.25
 MUSHROOM_REWARD = 20
 # TODO: add reward for killing enemies with fireballs
 FLOWER_REWARD = 20
-STAR_REWARD = -25
+STAR_REWARD = 25
 HEART_REWARD = 30
 BOULDER_REWARD = 5
 HIT_BOSS_REWARD = 5
@@ -84,7 +84,7 @@ PPO_HYPERPARAMS = {
             # will be changed later
             device="auto",
         ),
-        net_arch=dict(pi=[512, 512], vf=[512, 512]),
+        net_arch=dict(pi=[2048, 2048], vf=[2048, 2048]),
         normalize_images=False,
         share_features_extractor=True,
     ),
