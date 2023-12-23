@@ -30,7 +30,8 @@ BACKWARD_PUNISHMENT_COEF = 0.25
 MUSHROOM_REWARD = 20
 # TODO: add reward for killing enemies with fireballs
 FLOWER_REWARD = 20
-STAR_REWARD = 25
+# TODO: make reward when star bug is fixed/mitigated
+STAR_REWARD = -25
 HEART_REWARD = 30
 BOULDER_REWARD = 5
 HIT_BOSS_REWARD = 5
@@ -78,7 +79,7 @@ PPO_HYPERPARAMS = {
     "n_steps": 2048,
     "vf_coef": 0.5,
     "policy_kwargs": dict(
-        activation_fn=Rational,
+        activation_fn=lambda: Rational(approx_func="relu"),
         features_extractor_class=MarioLandExtractor,
         features_extractor_kwargs=dict(
             # will be changed later

@@ -16,7 +16,7 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         self,
         observationSpace: spaces.Dict,
         device: str,
-        activationFn: nn.Module = Rational,
+        activationFn: nn.Module = lambda: Rational(approx_func="relu"),
         cnnHiddenLayers: int = 128,
         marioHiddenLayers: int = 64,
         embeddingDimensions: int = 8,
