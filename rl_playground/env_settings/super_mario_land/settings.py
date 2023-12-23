@@ -29,7 +29,8 @@ BACKWARD_PUNISHMENT_COEF = 0.25
 MUSHROOM_REWARD = 20
 # TODO: add reward for killing enemies with fireballs
 FLOWER_REWARD = 20
-STAR_REWARD = 25
+# TODO: make reward when star bug is fixed/mitigated
+STAR_REWARD = -25
 HEART_REWARD = 30
 BOULDER_REWARD = 5
 HIT_BOSS_REWARD = 5

@@ -160,6 +160,8 @@ def getEntityIDsAndInfo(
                     obj.typeID,
                     np.array(
                         [
+                            scaledEncoding(obj.relXPos, MAX_REL_X_POS, True),
+                            scaledEncoding(obj.yPos, MAX_Y_POS, True),
                             scaledEncoding(xDistance, MAX_X_DISTANCE, False),
                             scaledEncoding(yDistance, MAX_Y_DISTANCE, False),
                             scaledEncoding(euclideanDistance, MAX_EUCLIDEAN_DISTANCE, True),
