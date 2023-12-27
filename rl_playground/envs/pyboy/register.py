@@ -66,7 +66,7 @@ def createPyboyEnv(
     env = FrameSkip(env, skip=4)
     # make evaluations strictly deterministic
     if not isEval:
-        env = StickyActionV0(env, 0.10)
+        env = StickyActionV0(env, 0.25)
 
     # check_env(env)
 

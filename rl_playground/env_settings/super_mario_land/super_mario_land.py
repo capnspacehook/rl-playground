@@ -45,6 +45,7 @@ class MarioLandSettings(EnvSettings):
         self.tileSet = None
         self.stateIdx = 0
         self.evalStateCounter = 0
+        self.evalEpisodeCounter = 0
         self.evalNoProgress = 0
         self.invincibilityTimer = 0
         self.deathCounter = 0
@@ -52,7 +53,7 @@ class MarioLandSettings(EnvSettings):
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
         self.stateCheckpoint = 0
 
-        # all 10 levels are equally likely to be trained on at the start
+        # all levels are equally likely to be trained on at the start
         self.levelChooseProbs = [0.1 for _ in range(10)]
 
         self.levelProgressMax = 0
@@ -64,6 +65,7 @@ class MarioLandSettings(EnvSettings):
                 # this will be passed before evals are started, reset the eval
                 # state counter so all evals will start at the same state
                 self.evalStateCounter = 0
+                self.evalEpisodeCounter = 0
             elif "_update_level_choose_probs" in options:
                 # an eval has ended, update the level choose probabilities
                 self.levelChooseProbs = options["_update_level_choose_probs"]
@@ -72,17 +74,23 @@ class MarioLandSettings(EnvSettings):
             return self.observation(options["_prevState"], curState), curState, False
 
         if self.isEval:
-            # evaluate levels in order
+            # evaluate levels in order, each level in easy and hard mode
+            # then the next level
             self.stateIdx = self.evalStateCounter
             # don't start from checkpoints
-            self.evalStateCounter += 3
+            if self.evalEpisodeCounter % 2 == 0:
+                self.evalStateCounter += 1
+            else:
+                self.evalStateCounter += 5
             if self.evalStateCounter >= len(self.stateFiles):
                 self.evalStateCounter = 0
+
+            self.evalEpisodeCounter += 1
         else:
             # reset game state to a random level
             level = np.random.choice(10, p=self.levelChooseProbs)
-            checkpoint = np.random.randint(3)
-            self.stateIdx = (3 * level) + checkpoint
+            checkpoint = np.random.randint(6)
+            self.stateIdx = (6 * level) + checkpoint
 
         curState = self._loadLevel()
 
@@ -274,7 +282,7 @@ class MarioLandSettings(EnvSettings):
                 return levelClear, curState
             else:
                 # load start of next level, not a level checkpoint
-                self.stateIdx += (2 - self.stateCheckpoint) + 1
+                self.stateIdx += 6 - (self.stateIdx % 6)
                 if self.stateIdx >= len(self.stateFiles):
                     self.stateIdx = 0
 
