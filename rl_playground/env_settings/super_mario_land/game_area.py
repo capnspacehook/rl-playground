@@ -115,6 +115,7 @@ big_fist_rock = (61, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 base_tiles = [
     base_scripts,
     mario_fireball,
+    coin,
     mushroom,
     flower,
     star,

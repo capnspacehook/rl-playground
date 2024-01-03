@@ -74,6 +74,9 @@ class MarioLandGameState(GameState):
         world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
         self.world = (world >> 4, world & 0x0F)
         self.livesLeft = bcm_to_dec(self.pyboy.get_memory_value(LIVES_LEFT_MEM_VAL))
+        self.score = bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL))
+        self.score += bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL + 1)) * 100
+        self.score += bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL + 2)) * 1000
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
         self.gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
         self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1

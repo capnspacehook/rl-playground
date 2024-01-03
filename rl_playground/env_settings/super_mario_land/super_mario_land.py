@@ -304,6 +304,8 @@ class MarioLandSettings(EnvSettings):
         elif xSpeed < 0:
             movement = xSpeed * BACKWARD_PUNISHMENT_COEF
 
+        score = (curState.score - prevState.score) * SCORE_REWARD_COEF
+
         # the game registers mario as on the ground 1 or 2 frames before
         # he actually is to change his pose
         if not curState.onGround:
@@ -349,7 +351,7 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = clock + movement + standingOnBoulder + powerup + heart + boss
+        reward = clock + movement + score + standingOnBoulder + powerup + heart + boss
 
         return reward, curState
 
@@ -501,6 +503,7 @@ class MarioLandSettings(EnvSettings):
 Max level progress: {curState.levelProgressMax}
 Powerup: {curState.powerupStatus}
 Lives left: {curState.livesLeft}
+Score: {curState.score}
 Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
 X, Y: {curState.xPos}, {curState.yPos}
 Rel X, Y {curState.relXPos} {curState.relYPos}

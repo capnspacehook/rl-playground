@@ -16,25 +16,27 @@ STARTING_TIME = 400
 DEATH_EXTRA_TIME = 30
 
 # Reward values
-HIT_PUNISHMENT = -5.0
+HIT_PUNISHMENT = -10
 DEATH_SCALE = -10
-DEATH_PUNISHMENT = -30.0
+DEATH_PUNISHMENT = -30
 GAME_OVER_PUNISHMENT = -50
 # TODO: linearly increase to encourage progress over speed
 # earlier, then after game mechanics and levels are learned
 # encourage speed more
 CLOCK_PUNISHMENT = -0.01
+SCORE_REWARD_COEF = 0.01
 FORWARD_REWARD_COEF = 1
 BACKWARD_PUNISHMENT_COEF = 0.25
-MUSHROOM_REWARD = 20
+MUSHROOM_REWARD = 10 # 1000 score
 # TODO: add reward for killing enemies with fireballs
-FLOWER_REWARD = 20
+FLOWER_REWARD = 10 # 1000 score
 # TODO: make reward when star bug is fixed/mitigated
-STAR_REWARD = -25
+STAR_REWARD = -35 # 1000 score
 HEART_REWARD = 30
 BOULDER_REWARD = 5
 HIT_BOSS_REWARD = 5
 KILL_BOSS_REWARD = 25
+# TODO: handle score getting updated
 LEVEL_CLEAR_REWARD = 35
 LEVEL_CLEAR_LIVES_COEF_REWARD = 10
 LEVEL_CLEAR_BIG_REWARD = 5
