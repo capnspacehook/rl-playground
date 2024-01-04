@@ -51,7 +51,6 @@ class MarioLandSettings(EnvSettings):
         self.deathCounter = 0
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
-        self.stateCheckpoint = 0
 
         # all levels are equally likely to be trained on at the start
         self.levelChooseProbs = [0.1 for _ in range(10)]
@@ -106,17 +105,10 @@ class MarioLandSettings(EnvSettings):
         # get checkpoint number from state filename
         stateFile = basename(splitext(stateFile)[0])
         world = int(stateFile[0])
-        self.stateCheckpoint = int(stateFile[4])
         self.tileSet = worldTilesets[world]
 
         # seed randomizer
         self.gameWrapper._set_timer_div(None)
-
-        # if we're starting at a level checkpoint do nothing for a random
-        # amount of frames to make object placements varied
-        if self.stateCheckpoint != 0:
-            for _ in range(random.randint(0, RANDOM_NOOP_FRAMES)):
-                self.pyboy.tick()
 
         # set score to 0
         for i in range(3):
@@ -130,7 +122,10 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL, 0)
         self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL + 1, 0)
 
+        self._setStartingPos()
+
         livesLeft = 1
+        # TODO: don't load state
         if transferState:
             livesLeft = prevState.livesLeft
             if prevState.powerupStatus != STATUS_SMALL:
@@ -186,6 +181,12 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
         curState.livesLeft = livesLeft
 
+        # if we're starting from a state with entities do nothing for
+        # a random amount of frames to make entity placements varied
+        if len(curState.objects) != 0:
+            for _ in range(random.randint(0, RANDOM_NOOP_FRAMES)):
+                self.pyboy.tick()
+
         # reset max level progress
         self.levelProgressMax = curState.xPos
         curState.levelProgressMax = curState.xPos
@@ -194,6 +195,20 @@ class MarioLandSettings(EnvSettings):
         self.deathCounter = 0
 
         return curState
+
+    def _setStartingPos(self):
+        # make starting position less detirministic to prevent action memorization
+        startingMovement = random.randint(0, 2)
+        if startingMovement == 1:
+            self.pyboy.send_input(WindowEvent.PRESS_ARROW_LEFT)
+            self.pyboy.tick()
+            self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
+            self.pyboy.tick()
+        elif startingMovement == 2:
+            self.pyboy.send_input(WindowEvent.PRESS_ARROW_RIGHT)
+            self.pyboy.tick()
+            self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
+            self.pyboy.tick()
 
     def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
         self.evalNoProgress = 0
@@ -255,6 +270,8 @@ class MarioLandSettings(EnvSettings):
 
             for _ in range(5):
                 self.pyboy.tick()
+
+            self._setStartingPos()
 
             curState = self.gameState()
             # don't reset state and observation caches so the agent can
@@ -509,7 +526,6 @@ X, Y: {curState.xPos}, {curState.yPos}
 Rel X, Y {curState.relXPos} {curState.relYPos}
 Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed,3)} {round(curState.xAccel,3)} {round(curState.yAccel,3)}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
-Object type: {self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)}
 Boss: {curState.bossActive} {curState.bossHealth}
 {objects}
 """
