@@ -125,7 +125,6 @@ class MarioLandSettings(EnvSettings):
         self._setStartingPos()
 
         livesLeft = 1
-        # TODO: don't load state
         if transferState:
             livesLeft = prevState.livesLeft
             if prevState.powerupStatus != STATUS_SMALL:
@@ -197,7 +196,10 @@ class MarioLandSettings(EnvSettings):
         return curState
 
     def _setStartingPos(self):
-        # make starting position less detirministic to prevent action memorization
+        if self.isEval:
+            return
+
+        # make starting position less deterministic to prevent action memorization
         startingMovement = random.randint(0, 2)
         if startingMovement == 1:
             self.pyboy.send_input(WindowEvent.PRESS_ARROW_LEFT)
@@ -283,6 +285,9 @@ class MarioLandSettings(EnvSettings):
         # handle level clear
         if curState.statusTimer == TIMER_LEVEL_CLEAR:
             levelClear = LEVEL_CLEAR_REWARD
+            # reward clearing a level through the top spot
+            if curState.yPos > 60:
+                levelClear += LEVEL_CLEAR_TOP_REWARD
             # reward clearing a level with extra lives
             levelClear += curState.livesLeft * LEVEL_CLEAR_LIVES_COEF_REWARD
             # reward clearing a level while powered up
