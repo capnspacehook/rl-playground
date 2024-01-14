@@ -215,8 +215,8 @@ def _drawMario(pyboy: PyBoy, gameArea: np.ndarray):
     # convert relative to screen y pos to sprite pos
     relYPos = pyboy.get_memory_value(0xC201) - 22
     marioLeftHead = pyboy.botsupport_manager().sprite(3)
-    x1 = marioLeftHead.x // 8
-    x2 = x1 + 1
+    x1 = min(marioLeftHead.x // 8, GAME_AREA_WIDTH - 1)
+    x2 = min(x1 + 1, GAME_AREA_WIDTH - 1)
     if marioLeftHead.attr_x_flip:
         x2 = x1 - 1
 

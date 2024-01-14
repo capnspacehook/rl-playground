@@ -117,16 +117,13 @@ class MarioLandSettings(EnvSettings):
             self.pyboy.set_memory_value(SCORE_DISPLAY_MEM_VAL + i, 44)
         self.pyboy.set_memory_value(SCORE_DISPLAY_MEM_VAL + 5, 0)
 
-        # set coins to 0
-        self.pyboy.set_memory_value(COINS_MEM_VAL, 0)
-        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL, 0)
-        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL + 1, 0)
-
         self._setStartingPos()
 
         livesLeft = 1
+        coins = 0
         if transferState:
             livesLeft = prevState.livesLeft
+            coins = prevState.coins
             if prevState.powerupStatus != STATUS_SMALL:
                 self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
             if prevState.powerupStatus == STATUS_FIRE:
@@ -138,6 +135,10 @@ class MarioLandSettings(EnvSettings):
             # make starting lives random to NN can learn to strategically
             # handle lives
             livesLeft = random.randint(STARTING_LIVES_MIN, STARTING_LIVES_MAX) - 1
+
+            # make starting coins random so NN can learn that collecting
+            # 100 coins means a level up
+            coins = random.randint(0, 99)
 
             # occasionally randomly set mario's powerup status so the NN
             # can learn to use the powerups; also makes the environment more
@@ -179,6 +180,11 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL, livesTens)
         self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
         curState.livesLeft = livesLeft
+
+        # set coins
+        self.pyboy.set_memory_value(COINS_MEM_VAL, dec_to_bcm(coins))
+        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL, coins // 10)
+        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL + 1, coins % 10)
 
         # if we're starting from a state with entities do nothing for
         # a random amount of frames to make entity placements varied
@@ -327,6 +333,7 @@ class MarioLandSettings(EnvSettings):
             movement = xSpeed * BACKWARD_PUNISHMENT_COEF
 
         score = (curState.score - prevState.score) * SCORE_REWARD_COEF
+        coins = (curState.coins - prevState.coins) * COIN_REWARD
 
         # the game registers mario as on the ground 1 or 2 frames before
         # he actually is to change his pose
@@ -361,9 +368,7 @@ class MarioLandSettings(EnvSettings):
         powerup = self._handlePowerup(prevState, curState)
 
         # reward getting 1-up
-        heart = 0
-        if curState.livesLeft > prevState.livesLeft:
-            heart = HEART_REWARD
+        heart = (curState.livesLeft - prevState.livesLeft) * HEART_REWARD
 
         # reward damaging or killing a boss
         boss = 0
@@ -373,7 +378,7 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = clock + movement + score + standingOnBoulder + powerup + heart + boss
+        reward = clock + movement + score + coins + standingOnBoulder + powerup + heart + boss
 
         return reward, curState
 
@@ -454,13 +459,16 @@ class MarioLandSettings(EnvSettings):
         return self._isDead(curState) and curState.livesLeft == 0
 
     def truncated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
+        # TODO: remove once star bug has been fixed
         # If no forward progress has been made in 15s, end the eval episode.
         # If the level is completed end this episode so the next level
         # isn't played twice. If 4-2 is completed end the episode, that's
         # final normal level so there's no level to start after it.
         return (
-            self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR)
-        ) or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
+            curState.hasStar
+            or (self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR))
+            or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
+        )
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
         return curState.gameState in (1, 3)
@@ -470,6 +478,7 @@ class MarioLandSettings(EnvSettings):
             [WindowEvent.PASS],
             [WindowEvent.PRESS_ARROW_LEFT],
             [WindowEvent.PRESS_ARROW_RIGHT],
+            [WindowEvent.PRESS_ARROW_DOWN],
             [WindowEvent.PRESS_BUTTON_B],
             [WindowEvent.PRESS_BUTTON_A],
             [WindowEvent.PRESS_BUTTON_B, WindowEvent.PRESS_BUTTON_A],
@@ -529,9 +538,10 @@ Score: {curState.score}
 Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
 X, Y: {curState.xPos}, {curState.yPos}
 Rel X, Y {curState.relXPos} {curState.relYPos}
-Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed,3)} {round(curState.xAccel,3)} {round(curState.yAccel,3)}
+Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed, 3)} {round(curState.xAccel, 3)} {round(curState.yAccel, 3)}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
 Boss: {curState.bossActive} {curState.bossHealth}
+Pose: {curState.pose}
 {objects}
 """
         print(s[1:], flush=True)

@@ -8,6 +8,7 @@ LEVEL_BLOCK_MEM_VAL = 0xC0AB
 MARIO_MOVING_DIRECTION_MEM_VAL = 0xC20D
 MARIO_X_POS_MEM_VAL = 0xC202
 MARIO_Y_POS_MEM_VAL = 0xC201
+MARIO_POSE_MEM_VAL = 0xC203
 WORLD_LEVEL_MEM_VAL = 0xFFB4
 LIVES_LEFT_MEM_VAL = 0xDA15
 STATUS_TIMER_MEM_VAL = 0xFFA6
@@ -31,6 +32,7 @@ LIVES_LEFT_DISPLAY_MEM_VAL = 0x9806
 
 
 MOVING_LEFT = 0x20
+CROUCHING_POSE = 24
 OBJ_TYPE_STAR = 0x34
 BOSS1_TYPE = 8
 BOSS2_TYPE = 50
@@ -61,6 +63,8 @@ class MarioLandGameState(GameState):
         self.relYPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
         self.yPos = convertYPos(self.relYPos)
 
+        self.pose = self.pyboy.get_memory_value(MARIO_POSE_MEM_VAL)
+
         # will be set later
         self.levelProgressMax = 0
         self.rawXSpeed = 0
@@ -74,6 +78,7 @@ class MarioLandGameState(GameState):
         world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
         self.world = (world >> 4, world & 0x0F)
         self.livesLeft = bcm_to_dec(self.pyboy.get_memory_value(LIVES_LEFT_MEM_VAL))
+        self.coins = bcm_to_dec(self.pyboy.get_memory_value(COINS_MEM_VAL))
         self.score = bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL))
         self.score += bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL + 1)) * 100
         self.score += bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL + 2)) * 1000

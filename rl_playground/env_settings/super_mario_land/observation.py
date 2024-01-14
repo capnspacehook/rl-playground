@@ -8,7 +8,11 @@ import torch
 
 from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import getGameArea
-from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState, MarioLandObject
+from rl_playground.env_settings.super_mario_land.ram import (
+    MarioLandGameState,
+    MarioLandObject,
+    CROUCHING_POSE,
+)
 from rl_playground.env_settings.super_mario_land.settings import *
 
 
@@ -233,13 +237,12 @@ def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
         np.concatenate(
             (
                 oneHotEncoding(curState.powerupStatus, POWERUP_STATUSES),
-                np.array([float(curState.hasStar)], dtype=np.float32),
-                np.array(
-                    [scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True)], dtype=np.float32
-                ),
+                np.array([float(curState.pose == CROUCHING_POSE), float(curState.hasStar)], dtype=np.float32),
                 np.array(
                     [
+                        scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True),
                         scaledEncoding(curState.livesLeft, 99, True),
+                        scaledEncoding(curState.coins, 99, True),
                         scaledEncoding(curState.timeLeft, 400, True),
                     ],
                     dtype=np.float32,

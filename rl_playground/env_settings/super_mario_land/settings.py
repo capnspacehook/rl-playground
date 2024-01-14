@@ -25,11 +25,12 @@ GAME_OVER_PUNISHMENT = -50
 # encourage speed more
 CLOCK_PUNISHMENT = -0.01
 SCORE_REWARD_COEF = 0.01
+COIN_REWARD = 4  # +100 score when getting a coin must be factored in
 FORWARD_REWARD_COEF = 1
 BACKWARD_PUNISHMENT_COEF = 0.25
-MUSHROOM_REWARD = 10  # 1000 score
+MUSHROOM_REWARD = 15  # 1000 score
 # TODO: add reward for killing enemies with fireballs
-FLOWER_REWARD = 10  # 1000 score
+FLOWER_REWARD = 15  # 1000 score
 # TODO: make reward when star bug is fixed/mitigated
 STAR_REWARD = -35  # 1000 score
 HEART_REWARD = 30
