@@ -7,77 +7,98 @@ from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState
 
 
-base_scripts = (1, list(range(81)))
-plane = (2, list(range(99, 110)))
-submarine = (3, list(range(112, 122)))
-mario_fireball = (4, [96, 110, 122])
+mario = (
+    1,
+    [
+        *list(range(0, 11)),
+        *list(range(15, 27)),
+        *list(range(31, 43)),
+        *list(range(48, 59)),
+        *list(range(66, 71)),
+    ],
+)
+mario_fireball = (2, [96, 110, 122])
 
 # Bonuses
-coin = (10, [244])
-mushroom = (11, [131])
-flower = (12, [224, 229])
-star = (13, [134])
-heart = (14, [132])
+coin = (12, [244])
+mushroom = (13, [131])
+flower = (14, [224, 229])
+star = (15, [134])
+heart = (16, [132])
 
 # Blocks
-pipes = list(range(368, 381))
-world_4_extra_pipes = [363, 364, 365, 366]  # are normal blocks on other worlds
-common_blocks = (
+pipe_tiles = list(range(368, 381))
+world_4_extra_pipe_tiles = [363, 364, 365, 366]  # are normal blocks on other worlds
+common_block_tiles = [
+    142,
+    143,
+    230,  # lift block
+    231,
+    232,
+    233,
+    234,
+    235,
+    236,
+    301,
+    302,
+    303,
+    304,
+    340,
+    356,
+    357,
+    358,
+    359,
+    381,
+    382,
+    383,
+]
+world_1_jump_through_block_tiles = [360, 361, 362]
+world_2_jump_through_block_tiles = [352, 353, 355]
+
+world_1_2_3_pipes = (16, [*pipe_tiles])
+world_4_pipes = (16, [*pipe_tiles, *world_4_extra_pipe_tiles])
+world_1_blocks = (
+    17,
+    [*common_block_tiles, *world_2_jump_through_block_tiles, 319, *world_4_extra_pipe_tiles],
+)  # 319 is scenery on worlds 3 and 4
+world_2_blocks = (
+    17,
+    [*common_block_tiles, *world_1_jump_through_block_tiles, 319, *world_4_extra_pipe_tiles],
+)  # 319 is scenery on worlds 3 and 4
+world_3_blocks = (
+    17,
     [
-        142,
-        143,
-        230,  # lift block
-        231,
-        232,
-        233,
-        234,
-        235,
-        236,
-        301,
-        302,
-        303,
-        304,
-        340,
-        352,
-        353,
-        355,
-        356,
-        357,
-        358,
-        359,
-        360,
-        361,
-        362,
-        381,
-        382,
-        383,
-    ]
-    + pipes
-    + world_4_extra_pipes,
+        *common_block_tiles,
+        *world_1_jump_through_block_tiles,
+        *world_2_jump_through_block_tiles,
+        *world_4_extra_pipe_tiles,
+    ],
 )
-world_1_2_blocks = (20, [*common_blocks, 319])  # 319 is scenery on worlds 3 and 4
-world_3_4_blocks = (20, common_blocks)
-moving_block = (21, [239])
-crush_blocks = (22, [221, 222, 223])
-falling_block = (23, [238])
-bouncing_boulder_tiles = [194, 195, 210, 211]
-bouncing_boulder = (24, bouncing_boulder_tiles)
-pushable_blocks = (25, [128, 130, 354])  # 354 invisible on 2-2
-question_block = (26, [129])
+world_4_blocks = (
+    17,
+    [*common_block_tiles, *world_1_jump_through_block_tiles, *world_2_jump_through_block_tiles],
+)
+world_1_jump_through_blocks = (18, [360, 361, 362])
+world_2_jump_through_blocks = (18, [352, 353, 355])
+moving_block = (19, [239])
+crush_blocks = (20, [221, 222, 223])
+falling_block = (21, [238])
+pushable_blocks = (22, [128, 130, 354])  # 354 invisible on 2-2
+question_block = (23, [129])
 # add pipes here if they should be separate
-spike = (28, [237])
-lever = (29, [225])  # Lever for level end
+spike = (24, [237])
+lever = (25, [225])  # Lever for level end
 
 # Enemies
-goomba = (30, [144])
-koopa = (30, [150, 151, 152, 153])
-shell = (32, [154, 155])
-explosion = (33, [157, 158])
-piranha_plant = (34, [146, 147, 148, 149])
-bill_launcher = (35, [135, 136])
-bullet_bill = (36, [249])
+goomba = (35, [144])
+koopa = (35, [150, 151, 152, 153])
+shell = (36, [154, 155])
+explosion = (37, [157, 158])
+piranha_plant = (38, [146, 147, 148, 149])
+bill_launcher = (39, [135, 136])
+bullet_bill = (35, [249])
 projectiles = (
-    37,
+    40,
     [
         # fireball
         226,
@@ -85,35 +106,36 @@ projectiles = (
         227,
     ],
 )
-flying_moth_arrow = (37, [172, 188])
+flying_moth_arrow = (40, [172, 188])
 
 # Level specific enemies
 sharedEnemy1 = [160, 161, 162, 163, 176, 177, 178, 179]
-moth = (30, sharedEnemy1)
-flying_moth = (30, [192, 193, 194, 195, 208, 209, 210, 211])
+moth = (35, sharedEnemy1)
+flying_moth = (35, [192, 193, 194, 195, 208, 209, 210, 211])
 sharedEnemy2 = [164, 165, 166, 167, 180, 181, 182, 183]
-sphinx = (30, sharedEnemy2)
+sphinx = (35, sharedEnemy2)
 sharedEnemy3 = [192, 193, 208, 209]
-bone_fish = (30, sharedEnemy3)
-seahorse = (30, sharedEnemy2)
+bone_fish = (35, sharedEnemy3)
+seahorse = (35, sharedEnemy2)
 sharedEnemy4 = [196, 197, 198, 199, 212, 213, 214, 215]
-robot = (30, sharedEnemy4)
-fist_rock = (30, sharedEnemy2)
-flying_rock = (30, [171, 187])
-falling_spider = (30, sharedEnemy4)
-jumping_spider = (30, sharedEnemy1)
-zombie = (30, sharedEnemy1)
-fire_worm = (30, sharedEnemy2)
-spitting_plant = (30, sharedEnemy3)
-fist = (51, [240, 241, 242, 243])
+robot = (35, sharedEnemy4)
+fist_rock = (35, sharedEnemy2)
+flying_rock = (35, [171, 187])
+falling_spider = (35, sharedEnemy4)
+jumping_spider = (35, sharedEnemy1)
+zombie = (35, sharedEnemy1)
+fire_worm = (35, sharedEnemy2)
+spitting_plant = (35, sharedEnemy3)
+bouncing_boulder_tiles = [194, 195, 210, 211]
+bouncing_boulder = (41, bouncing_boulder_tiles)
 
 # Bosses
-big_sphinx = (60, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
-big_sphinx_fire = (37, [196, 197, 212, 213])
-big_fist_rock = (61, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
+big_sphinx = (51, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
+big_sphinx_fire = (40, [196, 197, 212, 213])
+big_fist_rock = (52, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 
 base_tiles = [
-    base_scripts,
+    mario,
     mario_fireball,
     coin,
     mushroom,
@@ -155,7 +177,9 @@ worldTilesets = {
     1: _buildCompressedTileset(
         [
             *base_tiles,
-            world_1_2_blocks,
+            world_1_2_3_pipes,
+            world_1_blocks,
+            world_1_jump_through_blocks,
             moth,
             flying_moth,
             flying_moth_arrow,
@@ -167,7 +191,9 @@ worldTilesets = {
     2: _buildCompressedTileset(
         [
             *base_tiles,
-            world_1_2_blocks,
+            world_1_2_3_pipes,
+            world_2_blocks,
+            world_2_jump_through_blocks,
             bone_fish,
             seahorse,
             robot,
@@ -176,7 +202,8 @@ worldTilesets = {
     3: _buildCompressedTileset(
         [
             *base_tiles,
-            world_3_4_blocks,
+            world_1_2_3_pipes,
+            world_3_blocks,
             fist_rock,
             flying_rock,
             bouncing_boulder,
@@ -188,7 +215,8 @@ worldTilesets = {
     4: _buildCompressedTileset(
         [
             *base_tiles,
-            world_3_4_blocks,
+            world_4_pipes,
+            world_4_blocks,
             zombie,
             fire_worm,
             spitting_plant,

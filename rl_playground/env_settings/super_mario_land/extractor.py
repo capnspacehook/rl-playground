@@ -9,7 +9,6 @@ from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.game_area import MAX_TILE
 
 
-# TODO: update number in comments once NN architecture is stable
 class MarioLandExtractor(BaseFeaturesExtractor):
     def __init__(
         self,
@@ -52,7 +51,6 @@ class MarioLandExtractor(BaseFeaturesExtractor):
             activationFn(),
         )
 
-        # marioInfo (nStack, 7) -> (nStack, hiddenLayers)
         self.marioFC = nn.Sequential(
             nn.Linear(marioInfo.shape[1], marioHiddenLayers, device=device),
             activationFn(),
@@ -60,11 +58,8 @@ class MarioLandExtractor(BaseFeaturesExtractor):
             activationFn(),
         )
 
-        # entityIDs (nStack, 10) -> (nStack, 10, embeddingDimensions)
         self.entityIDEmbedding = nn.Embedding(entityIDs.high[0][0], embeddingDimensions, device=device)
-        # entities concat -> (nStack, 10, 8+embeddingDimensions)
 
-        # entityInfos (nStack, 10, 8) -> (nStack, 10, hiddenLayers)
         self.entityFC = nn.Sequential(
             nn.Linear(entityInfos.shape[2] + embeddingDimensions, entityHiddenLayers, device=device),
             activationFn(),

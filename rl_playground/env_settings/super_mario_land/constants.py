@@ -35,4 +35,4 @@ GAME_AREA_HEIGHT = 16
 GAME_AREA_WIDTH = 20
 
 # update if the maximum tile value changes
-MAX_TILE = 61
+MAX_TILE = 52
