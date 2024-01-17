@@ -541,7 +541,6 @@ Rel X, Y {curState.relXPos} {curState.relYPos}
 Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed, 3)} {round(curState.xAccel, 3)} {round(curState.yAccel, 3)}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
 Boss: {curState.bossActive} {curState.bossHealth}
-Pose: {curState.pose}
 {objects}
 """
         print(s[1:], flush=True)

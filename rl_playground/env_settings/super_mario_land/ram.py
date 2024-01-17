@@ -63,8 +63,6 @@ class MarioLandGameState(GameState):
         self.relYPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
         self.yPos = convertYPos(self.relYPos)
 
-        self.pose = self.pyboy.get_memory_value(MARIO_POSE_MEM_VAL)
-
         # will be set later
         self.levelProgressMax = 0
         self.rawXSpeed = 0

@@ -1,4 +1,3 @@
-from typing import Any, Deque, Dict
 import numpy as np
 from pyboy import PyBoy
 from pyboy.botsupport.constants import TILES
@@ -60,11 +59,11 @@ world_4_pipes = (16, [*pipe_tiles, *world_4_extra_pipe_tiles])
 world_1_blocks = (
     17,
     [*common_block_tiles, *world_2_jump_through_block_tiles, 319, *world_4_extra_pipe_tiles],
-)  # 319 is scenery on worlds 3 and 4
+)  # 319 is scenery on all other worlds
 world_2_blocks = (
     17,
-    [*common_block_tiles, *world_1_jump_through_block_tiles, 319, *world_4_extra_pipe_tiles],
-)  # 319 is scenery on worlds 3 and 4
+    [*common_block_tiles, *world_1_jump_through_block_tiles, *world_4_extra_pipe_tiles],
+)
 world_3_blocks = (
     17,
     [

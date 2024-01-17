@@ -8,7 +8,7 @@ from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtra
 N_GAME_AREA_STACK = 6  # number of game area observaions to stack
 N_MARIO_OBS_STACK = 6  # number of mario observations to stack
 N_ENTITY_OBS_STACK = 4  # number of entity observations to stack
-N_SCALAR_OBS_STACK = 6  # number of scalar observations to stack
+N_SCALAR_OBS_STACK = 2  # number of scalar observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Time settings
@@ -25,7 +25,7 @@ GAME_OVER_PUNISHMENT = -50
 # encourage speed more
 CLOCK_PUNISHMENT = -0.01
 SCORE_REWARD_COEF = 0.01
-COIN_REWARD = 4  # +100 score when getting a coin must be factored in
+COIN_REWARD = 2  # +100 score when getting a coin must be factored in
 FORWARD_REWARD_COEF = 1
 BACKWARD_PUNISHMENT_COEF = 0.25
 MUSHROOM_REWARD = 15  # 1000 score
