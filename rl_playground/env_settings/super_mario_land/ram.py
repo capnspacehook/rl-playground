@@ -52,16 +52,15 @@ SHRINK_TIME = 0x50 + 0x40
 class MarioLandGameState(GameState):
     def __init__(self, pyboy: PyBoy):
         self.pyboy = pyboy
-        self.gameWrapper = pyboy.game_wrapper()
 
         # Find the real level progress x
-        levelBlock = pyboy.get_memory_value(LEVEL_BLOCK_MEM_VAL)
-        self.relXPos = pyboy.get_memory_value(MARIO_X_POS_MEM_VAL)
-        scx = pyboy.get_memory_value(0xFF43)
+        levelBlock = pyboy.memory[LEVEL_BLOCK_MEM_VAL]
+        self.relXPos = pyboy.memory[MARIO_X_POS_MEM_VAL]
+        scx = pyboy.memory[0xFF43]
         real = (scx - 7) % 16 if (scx - 7) % 16 != 0 else 16
         self.xPos = levelBlock * 16 + real + self.relXPos
 
-        self.relYPos = self.pyboy.get_memory_value(MARIO_Y_POS_MEM_VAL)
+        self.relYPos = self.pyboy.memory[MARIO_Y_POS_MEM_VAL]
         self.yPos = convertYPos(self.relYPos)
 
         # will be set later
@@ -74,17 +73,17 @@ class MarioLandGameState(GameState):
         self.yAccel = 0
         self.posReset = False
 
-        world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
+        world = self.pyboy.memory[WORLD_LEVEL_MEM_VAL]
         self.world = (world >> 4, world & 0x0F)
-        self.hardMode = self.pyboy.get_memory_value(NUM_WINS_MEM_VAL) != 0
-        self.livesLeft = bcm_to_dec(self.pyboy.get_memory_value(LIVES_LEFT_MEM_VAL))
-        self.coins = bcm_to_dec(self.pyboy.get_memory_value(COINS_MEM_VAL))
-        self.score = bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL))
-        self.score += bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL + 1)) * 100
-        self.score += bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL + 2)) * 1000
-        self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
-        self.gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
-        self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
+        # self.hardMode = self.pyboy.memory[NUM_WINS_MEM_VAL] != 0
+        self.livesLeft = bcm_to_dec(self.pyboy.memory[LIVES_LEFT_MEM_VAL])
+        self.coins = bcm_to_dec(self.pyboy.memory[COINS_MEM_VAL])
+        self.score = bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL])
+        self.score += bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL] + 1) * 100
+        self.score += bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL] + 2) * 1000
+        self.statusTimer = self.pyboy.memory[STATUS_TIMER_MEM_VAL]
+        self.gameState = self.pyboy.memory[GAME_STATE_MEM_VAL]
+        self.onGround = self.pyboy.memory[MARIO_ON_GROUND_MEM_VAL] == 1
 
         self.pipeWarping = False
         self.underground = False
@@ -93,8 +92,8 @@ class MarioLandGameState(GameState):
             if self.gameState in (0x9, 0xA):
                 self.underground = True
 
-        timerHundreds = self.pyboy.get_memory_value(TIMER_HUNDREDS)
-        timerTens = bcm_to_dec(self.pyboy.get_memory_value(TIMER_TENS))
+        timerHundreds = self.pyboy.memory[TIMER_HUNDREDS]
+        timerTens = bcm_to_dec(self.pyboy.memory[TIMER_TENS])
         self.timeLeft = (timerHundreds * 100) + timerTens
 
         self.objects: List[MarioLandObject] = []
@@ -102,25 +101,25 @@ class MarioLandGameState(GameState):
         self.bossHealth = 0
         for i in range(10):
             addr = OBJECTS_START_MEM_VAL | (i * 0x10)
-            objType = self.pyboy.get_memory_value(addr)
+            objType = self.pyboy.memory[addr]
             if objType == 255 or objType not in typeIDMap:
                 continue
 
-            relXPos = self.pyboy.get_memory_value(addr + 0x3)
+            relXPos = self.pyboy.memory[addr] + 0x3
             xPos = levelBlock * 16 + real + relXPos
-            relYPos = self.pyboy.get_memory_value(addr + 0x2)
+            relYPos = self.pyboy.memory[addr] + 0x2
             yPos = convertYPos(relYPos)
             objType = typeIDMap[objType]
             self.objects.append(MarioLandObject(objType, relXPos, xPos, yPos))
 
             if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
                 self.bossActive = True
-                self.bossHealth = self.pyboy.get_memory_value(addr | 0xC)
+                self.bossHealth = self.pyboy.memory[addr] | 0xC
 
-        powerupStatus = self.pyboy.get_memory_value(POWERUP_STATUS_MEM_VAL)
-        hasFireFlower = self.pyboy.get_memory_value(HAS_FIRE_FLOWER_MEM_VAL)
-        starTimer = self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)
-        processingObj = self.pyboy.get_memory_value(PROCESSING_OBJECT_MEM_VAL)
+        powerupStatus = self.pyboy.memory[POWERUP_STATUS_MEM_VAL]
+        hasFireFlower = self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL]
+        starTimer = self.pyboy.memory[STAR_TIMER_MEM_VAL]
+        processingObj = self.pyboy.memory[PROCESSING_OBJECT_MEM_VAL]
 
         self.powerupStatus = STATUS_SMALL
         self.gotMushroom = False

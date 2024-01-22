@@ -1,6 +1,6 @@
 import numpy as np
 from pyboy import PyBoy
-from pyboy.botsupport.constants import TILES
+from pyboy.api.constants import TILES
 
 from rl_playground.env_settings.super_mario_land.constants import *
 from rl_playground.env_settings.super_mario_land.ram import MarioLandGameState
@@ -224,24 +224,19 @@ worldTilesets = {
 }
 
 
-def getGameArea(
-    pyboy: PyBoy,
-    tileSet: np.ndarray,
-    curState: MarioLandGameState,
-) -> np.ndarray:
-    gameArea = pyboy.game_wrapper()._game_area_np(tileSet)
+def getGameArea(pyboy: PyBoy, curState: MarioLandGameState) -> np.ndarray:
+    gameArea = pyboy.game_area()
+    gameArea = np.array(gameArea, dtype=np.uint8, copy=False)
     if curState.isInvincible:
         _drawMario(pyboy, gameArea)
 
-    # _game_area_np returns an ndarray with dtype uint16, pytorch doesn't
-    # support uint16 for some reason
-    return gameArea.astype(dtype=np.uint8, copy=False)
+    return gameArea
 
 
 def _drawMario(pyboy: PyBoy, gameArea: np.ndarray):
     # convert relative to screen y pos to sprite pos
-    relYPos = pyboy.get_memory_value(0xC201) - 22
-    marioLeftHead = pyboy.botsupport_manager().sprite(3)
+    relYPos = pyboy.memory[0xC201] - 22
+    marioLeftHead = pyboy.get_sprite(3)
     x1 = min(marioLeftHead.x // 8, GAME_AREA_WIDTH - 1)
     x2 = min(x1 + 1, GAME_AREA_WIDTH - 1)
     if marioLeftHead.attr_x_flip:

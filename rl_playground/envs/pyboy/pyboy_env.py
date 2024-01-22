@@ -4,7 +4,8 @@ from typing import Any
 
 import pandas
 from gymnasium import Env
-from pyboy import PyBoy, WindowEvent
+from pyboy import PyBoy
+from pyboy.utils import WindowEvent
 
 from rl_playground.env_settings.env_settings import GameState, EnvSettings
 
@@ -105,11 +106,11 @@ class PyBoyEnv(Env):
         elif not self.isPlaytest:
             self.sendInputs(actions)
 
-        pyboyDone = self.pyboy.tick()
+        pyboyStillRunning = self.pyboy.tick()
         reward, curGameState = self.envSettings.reward(self.prevGameState)
 
         obs = self.envSettings.observation(self.prevGameState, curGameState)
-        terminated = pyboyDone or self.envSettings.terminated(self.prevGameState, curGameState)
+        terminated = not pyboyStillRunning or self.envSettings.terminated(self.prevGameState, curGameState)
         truncated = self.envSettings.truncated(self.prevGameState, curGameState)
         info = self.envSettings.info(self.prevGameState)
 
