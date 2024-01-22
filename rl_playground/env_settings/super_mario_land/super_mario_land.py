@@ -30,7 +30,6 @@ class MarioLandSettings(EnvSettings):
         stateDir: Path = Path("states", "super_mario_land"),
     ):
         self.pyboy = pyboy
-        self.gameWrapper = self.pyboy.game_wrapper()
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
         self.observationCaches = [
@@ -42,7 +41,6 @@ class MarioLandSettings(EnvSettings):
         ]
 
         self.isEval = isEval
-        self.tileSet = None
         self.stateIdx = 0
         self.evalStateCounter = 0
         self.evalEpisodeCounter = 0
@@ -105,17 +103,15 @@ class MarioLandSettings(EnvSettings):
         # get checkpoint number from state filename
         stateFile = basename(splitext(stateFile)[0])
         world = int(stateFile[0])
-        self.tileSet = worldTilesets[world]
-
-        # seed randomizer
-        self.gameWrapper._set_timer_div(None)
+        # TODO: remove the list conversion when pyboy allows ndarrays
+        self.pyboy.game_area_mapping(list(worldTilesets[world]))
 
         # set score to 0
         for i in range(3):
-            self.pyboy.set_memory_value(SCORE_MEM_VAL + i, 0)
+            self.pyboy.memory[SCORE_MEM_VAL + i] = 0
         for i in range(5):
-            self.pyboy.set_memory_value(SCORE_DISPLAY_MEM_VAL + i, 44)
-        self.pyboy.set_memory_value(SCORE_DISPLAY_MEM_VAL + 5, 0)
+            self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + i] = 44
+        self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + 5] = 0
 
         self._setStartingPos()
 
@@ -125,9 +121,9 @@ class MarioLandSettings(EnvSettings):
             livesLeft = prevState.livesLeft
             coins = prevState.coins
             if prevState.powerupStatus != STATUS_SMALL:
-                self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
+                self.pyboy.memory[POWERUP_STATUS_MEM_VAL] = 1
             if prevState.powerupStatus == STATUS_FIRE:
-                self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
+                self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL] = 1
 
             curState = self.gameState()
             self._handlePowerup(prevState, curState)
@@ -155,13 +151,13 @@ class MarioLandSettings(EnvSettings):
                 # TODO: change back when pyboy bug is fixed
                 if False:  # randPowerup in (0, 2, 4):
                     gotStar = True
-                    self.pyboy.set_memory_value(STAR_TIMER_MEM_VAL, 0xF8)
+                    self.pyboy.memory[STAR_TIMER_MEM_VAL] = 0xF8
                     # set star song so timer functions correctly
-                    self.pyboy.set_memory_value(0xDFE8, 0x0C)
+                    self.pyboy.memory[0xDFE8] = 0x0C
                 if randPowerup != STATUS_SMALL:
-                    self.pyboy.set_memory_value(POWERUP_STATUS_MEM_VAL, 1)
+                    self.pyboy.memory[POWERUP_STATUS_MEM_VAL] = 1
                     if randPowerup > 2:
-                        self.pyboy.set_memory_value(HAS_FIRE_FLOWER_MEM_VAL, 1)
+                        self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL] = 1
 
                 prevState = curState
                 curState = self.gameState()
@@ -176,21 +172,21 @@ class MarioLandSettings(EnvSettings):
         # set lives left
         livesTens = livesLeft // 10
         livesOnes = livesLeft % 10
-        self.pyboy.set_memory_value(LIVES_LEFT_MEM_VAL, (livesTens << 4) | livesOnes)
-        self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL, livesTens)
-        self.pyboy.set_memory_value(LIVES_LEFT_DISPLAY_MEM_VAL + 1, livesOnes)
+        self.pyboy.memory[LIVES_LEFT_MEM_VAL] = (livesTens << 4) | livesOnes
+        self.pyboy.memory[LIVES_LEFT_DISPLAY_MEM_VAL] = livesTens
+        self.pyboy.memory[LIVES_LEFT_DISPLAY_MEM_VAL + 1] = livesOnes
         curState.livesLeft = livesLeft
 
         # set coins
-        self.pyboy.set_memory_value(COINS_MEM_VAL, dec_to_bcm(coins))
-        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL, coins // 10)
-        self.pyboy.set_memory_value(COINS_DISPLAY_MEM_VAL + 1, coins % 10)
+        self.pyboy.memory[COINS_MEM_VAL] = dec_to_bcm(coins)
+        self.pyboy.memory[COINS_DISPLAY_MEM_VAL] = coins // 10
+        self.pyboy.memory[COINS_DISPLAY_MEM_VAL + 1] = coins % 10
 
         # if we're starting from a state with entities do nothing for
         # a random amount of frames to make entity placements varied
         if len(curState.objects) != 0:
-            for _ in range(random.randint(0, RANDOM_NOOP_FRAMES)):
-                self.pyboy.tick()
+            nopFrames = random.randint(0, RANDOM_NOOP_FRAMES)
+            self.pyboy.tick(count=nopFrames)
 
         # reset max level progress
         self.levelProgressMax = curState.xPos
@@ -226,9 +222,7 @@ class MarioLandSettings(EnvSettings):
         if resetCaches:
             [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
 
-        gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(
-            self.pyboy, self.tileSet, self.gameStateCache
-        )
+        gameArea, marioInfo, entityID, entityInfo, scalar = getObservations(self.pyboy, self.gameStateCache)
 
         if resetCaches:
             # reset the observation cache
@@ -244,9 +238,9 @@ class MarioLandSettings(EnvSettings):
         # set level timer
         timerHundreds = timer // 100
         timerTens = timer - (timerHundreds * 100)
-        self.pyboy.set_memory_value(TIMER_HUNDREDS, timerHundreds)
-        self.pyboy.set_memory_value(TIMER_TENS, dec_to_bcm(timerTens))
-        self.pyboy.set_memory_value(TIMER_FRAMES, 0x28)
+        self.pyboy.memory[TIMER_HUNDREDS] = timerHundreds
+        self.pyboy.memory[TIMER_TENS] = dec_to_bcm(timerTens)
+        self.pyboy.memory[TIMER_FRAMES] = 0x28
 
         return combineObservations(self.observationCaches)
 
@@ -273,11 +267,10 @@ class MarioLandSettings(EnvSettings):
             gameState = curState.gameState
             while gameState in (3, 4) or (gameState == 1 and statusTimer != 0):
                 self.pyboy.tick()
-                gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
-                statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
+                gameState = self.pyboy.memory[GAME_STATE_MEM_VAL]
+                statusTimer = self.pyboy.memory[STATUS_TIMER_MEM_VAL]
 
-            for _ in range(5):
-                self.pyboy.tick()
+            self.pyboy.tick(count=5)
 
             self._setStartingPos()
 
@@ -416,7 +409,7 @@ class MarioLandSettings(EnvSettings):
             # divisible by four. Don't ask me why. This accounts for
             # extra invincibility frames depending on what the frame
             # counter was at when the star was picked up
-            frames = self.pyboy.get_memory_value(FRAME_COUNTER_MEM_VAL)
+            frames = self.pyboy.memory[FRAME_COUNTER_MEM_VAL]
             extra = (frames - 1) % 4
             self.invincibilityTimer += extra
             powerup += STAR_REWARD
@@ -453,7 +446,7 @@ class MarioLandSettings(EnvSettings):
         return powerup
 
     def observation(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> Any:
-        return getStackedObservation(self.pyboy, self.tileSet, self.observationCaches, self.gameStateCache)
+        return getStackedObservation(self.pyboy, self.observationCaches, self.gameStateCache)
 
     def terminated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
         return self._isDead(curState) and curState.livesLeft == 0
@@ -535,7 +528,7 @@ Max level progress: {curState.levelProgressMax}
 Powerup: {curState.powerupStatus}
 Lives left: {curState.livesLeft}
 Score: {curState.score}
-Status timer: {curState.statusTimer} {self.pyboy.get_memory_value(STAR_TIMER_MEM_VAL)} {self.pyboy.get_memory_value(0xDA00)}
+Status timer: {curState.statusTimer} {self.pyboy.memory[STAR_TIMER_MEM_VAL]} {self.pyboy.memory[0xDA00]}
 X, Y: {curState.xPos}, {curState.yPos}
 Rel X, Y {curState.relXPos} {curState.relYPos}
 Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed, 3)} {round(curState.xAccel, 3)} {round(curState.yAccel, 3)}

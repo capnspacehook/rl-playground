@@ -29,24 +29,20 @@ def createPyboyEnv(
 ):
     # silence useless pyboy logs
     logging.getLogger("pyboy.pyboy").setLevel(logging.ERROR)
-    logging.getLogger("pyboy.plugins.window_headless").setLevel(logging.ERROR)
     if isPlaytest:
         logging.getLogger("pyboy.plugins.debug").setLevel(logging.INFO)
 
-    shouldRender = not isHyperparamOptimize and (render or isEval)
     pyboy = PyBoy(
         rom,
-        window_type="SDL2" if render else "headless",
+        window_type="SDL2" if render else "null",
         scale=4,
         debug=False,
-        game_wrapper=True,
     )
-    pyboy._rendering(shouldRender)
     pyboy.set_emulation_speed(speed)
 
     envSettings = None
     orchestrator = None
-    if pyboy.cartridge_title() == "METROID2":
+    if pyboy.cartridge_title == "METROID2":
         envSettings = Metroid2Settings(pyboy, isEval, **envKwargs)
     else:
         envSettings = MarioLandSettings(pyboy, isEval, **envKwargs)

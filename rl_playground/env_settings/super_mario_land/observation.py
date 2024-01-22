@@ -37,11 +37,10 @@ def observationSpace() -> spaces.Dict:
 
 def getStackedObservation(
     pyboy: PyBoy,
-    tileSet: np.ndarray,
     obsCache: Tuple[Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray], Deque[np.ndarray]],
     states: Deque[MarioLandGameState],
 ) -> Dict[str, Any]:
-    gameArea, marioInfo, entityIDs, entityInfos, scalar = getObservations(pyboy, tileSet, states)
+    gameArea, marioInfo, entityIDs, entityInfos, scalar = getObservations(pyboy, states)
 
     obsCache[0].append(gameArea)
     obsCache[1].append(marioInfo)
@@ -54,11 +53,10 @@ def getStackedObservation(
 
 def getObservations(
     pyboy: PyBoy,
-    tileSet: np.ndarray,
     states: Deque[MarioLandGameState],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     return (
-        getGameArea(pyboy, tileSet, states[-1]),
+        getGameArea(pyboy, states[-1]),
         *getEntityIDsAndInfo(states),
         getScalarFeatures(states[-1]),
     )
