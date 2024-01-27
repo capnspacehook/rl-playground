@@ -10,7 +10,11 @@ from gymnasium.spaces import Discrete, Space
 from pyboy import PyBoy, WindowEvent
 
 from rl_playground.env_settings.env_settings import EnvSettings
-from rl_playground.env_settings.super_mario_land.constants import MARIO_MAX_X_SPEED
+from rl_playground.env_settings.super_mario_land.constants import (
+    MARIO_MAX_X_SPEED,
+    MARIO_MAX_Y_SPEED,
+    MAX_EUCLIDEAN_DISTANCE,
+)
 from rl_playground.env_settings.super_mario_land.game_area import bouncing_boulder_tiles, worldTilesets
 from rl_playground.env_settings.super_mario_land.observation import (
     combineObservations,
@@ -44,16 +48,21 @@ class MarioLandSettings(EnvSettings):
         self.isEval = isEval
         self.tileSet = None
         self.stateIdx = 0
+        self.levelStr = ""
         self.evalStateCounter = 0
-        self.evalEpisodeCounter = 0
         self.evalNoProgress = 0
+        self.evalEpisodeCounter = 0
         self.invincibilityTimer = 0
+
         self.deathCounter = 0
+        self.heartCounter = 0
+        self.powerupCounter = 0
+        self.coinCounter = 0
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
 
         # all levels are equally likely to be trained on at the start
-        self.levelChooseProbs = [0.1 for _ in range(10)]
+        self.levelChooseProbs = [0.05 for _ in range(20)]
 
         self.levelProgressMax = 0
         self.onGroundFor = 0
@@ -72,6 +81,12 @@ class MarioLandSettings(EnvSettings):
             curState = self.gameState()
             return self.observation(options["_prevState"], curState), curState, False
 
+        # reset counters
+        self.deathCounter = 0
+        self.heartCounter = 0
+        self.powerupCounter = 0
+        self.coinCounter = 0
+
         if self.isEval:
             # evaluate levels in order, each level in easy and hard mode
             # then the next level
@@ -87,9 +102,9 @@ class MarioLandSettings(EnvSettings):
             self.evalEpisodeCounter += 1
         else:
             # reset game state to a random level
-            level = np.random.choice(10, p=self.levelChooseProbs)
-            checkpoint = np.random.randint(6)
-            self.stateIdx = (6 * level) + checkpoint
+            level = np.random.choice(20, p=self.levelChooseProbs)
+            checkpoint = np.random.randint(3)
+            self.stateIdx = (3 * level) + checkpoint
 
         curState = self._loadLevel()
 
@@ -105,6 +120,7 @@ class MarioLandSettings(EnvSettings):
         # get checkpoint number from state filename
         stateFile = basename(splitext(stateFile)[0])
         world = int(stateFile[0])
+        self.levelStr = f"{world}-{stateFile[2]}{stateFile[6]}"
         self.tileSet = worldTilesets[world]
 
         # seed randomizer
@@ -197,7 +213,8 @@ class MarioLandSettings(EnvSettings):
         curState.levelProgressMax = curState.xPos
 
         # reset death counter
-        self.deathCounter = 0
+        if not self.isEval:
+            self.deathCounter = 0
 
         return curState
 
@@ -334,6 +351,7 @@ class MarioLandSettings(EnvSettings):
 
         score = (curState.score - prevState.score) * SCORE_REWARD_COEF
         coins = (curState.coins - prevState.coins) * COIN_REWARD
+        self.coinCounter += curState.coins - prevState.coins
 
         # the game registers mario as on the ground 1 or 2 frames before
         # he actually is to change his pose
@@ -342,6 +360,26 @@ class MarioLandSettings(EnvSettings):
         elif self.onGroundFor < 2:
             self.onGroundFor += 1
         onGround = self.onGroundFor == 2
+
+        movingPlatform = 0
+        movPlatObj, onMovingPlatform = self._standingOnMovingPlatform(curState)
+        if onGround and onMovingPlatform:
+            ySpeed = np.clip(curState.yPos - prevState.yPos, -MARIO_MAX_Y_SPEED, MARIO_MAX_Y_SPEED)
+            movingPlatform += max(0, xSpeed) * MOVING_PLATFORM_X_REWARD_COEF
+            movingPlatform += max(0, ySpeed) * MOVING_PLATFORM_Y_REWARD_COEF
+
+            curPlatPos = np.array((curState.xPos, curState.yPos))
+            platDistances = []
+            for obj in curState.objects:
+                if movPlatObj == obj or obj.typeID != TYPE_ID_MOVING_PLATFORM or curState.xPos > obj.xPos:
+                    continue
+                platDistances.append(np.linalg.norm(curPlatPos - np.array((obj.xPos, obj.yPos))))
+
+            if len(platDistances) > 0:
+                minDistance = min(platDistances)
+                movingPlatform += MOVING_PLATFORM_DISTANCE_REWARD_MAX - (
+                    minDistance * (MOVING_PLATFORM_DISTANCE_REWARD_MAX / MAX_EUCLIDEAN_DISTANCE)
+                )
 
         # in world 3 reward standing on bouncing boulders to encourage
         # waiting for them to fall and ride on them instead of immediately
@@ -366,9 +404,12 @@ class MarioLandSettings(EnvSettings):
 
         # reward getting powerups and manage powerup related bookkeeping
         powerup = self._handlePowerup(prevState, curState)
+        if powerup > 0:
+            self.powerupCounter += 1
 
         # reward getting 1-up
         heart = (curState.livesLeft - prevState.livesLeft) * HEART_REWARD
+        self.heartCounter += curState.livesLeft - prevState.livesLeft
 
         # reward damaging or killing a boss
         boss = 0
@@ -378,9 +419,17 @@ class MarioLandSettings(EnvSettings):
             elif curState.bossHealth == 0:
                 boss = KILL_BOSS_REWARD
 
-        reward = clock + movement + score + coins + standingOnBoulder + powerup + heart + boss
+        reward = (
+            clock + movement + score + coins + movingPlatform + standingOnBoulder + powerup + heart + boss
+        )
 
         return reward, curState
+
+    def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> (MarioLandObject | None, bool):
+        for obj in curState.objects:
+            if obj.typeID == TYPE_ID_MOVING_PLATFORM and curState.yPos - 10 == obj.yPos:
+                return obj, True
+        return None, False
 
     def _standingOnTiles(self, tiles: List[int]) -> bool:
         sprites = self.pyboy.botsupport_manager().sprite_by_tile_identifier(tiles, on_screen=True)
@@ -521,8 +570,13 @@ class MarioLandSettings(EnvSettings):
 
     def info(self, curState: MarioLandGameState) -> Dict[str, Any]:
         return {
-            "worldLevel": curState.world,
+            "worldLevel": self.levelStr,
             "levelProgress": curState.levelProgressMax,
+            "deaths": self.deathCounter,
+            "hearts": self.heartCounter,
+            "powerups": self.powerupCounter,
+            "coins": self.coinCounter,
+            "score": curState.score,
         }
 
     def printGameState(self, prevState: MarioLandGameState, curState: MarioLandGameState):
@@ -546,4 +600,4 @@ Boss: {curState.bossActive} {curState.bossHealth}
         print(s[1:], flush=True)
 
     def render(self):
-        return self.pyboy.screen_image()
+        return self.pyboy.botsupport_manager().screen().screen_ndarray()

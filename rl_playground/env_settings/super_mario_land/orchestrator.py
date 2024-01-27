@@ -8,29 +8,49 @@ from rl_playground.env_settings.env_settings import Orchestrator
 from rl_playground.env_settings.super_mario_land.settings import *
 
 
-levelsToIdxes = {
-    (1, 1): 0,
-    (1, 2): 1,
-    (1, 3): 2,
-    (2, 1): 3,
-    (2, 2): 4,
-    (3, 1): 5,
-    (3, 2): 6,
-    (3, 3): 7,
-    (4, 1): 8,
-    (4, 2): 9,
-}
+levels = [
+    "1-1e",
+    "1-1h",
+    "1-2e",
+    "1-2h",
+    "1-3e",
+    "1-3h",
+    "2-1e",
+    "2-1h",
+    "2-2e",
+    "2-2h",
+    "3-1e",
+    "3-1h",
+    "3-2e",
+    "3-2h",
+    "3-3e",
+    "3-3h",
+    "4-1e",
+    "4-1h",
+    "4-2e",
+    "4-2h",
+]
 
 levelEndPositions = [
     2600,
+    2600,
+    2440,
     2440,
     2588,
+    2588,
+    2760,
     2760,
     2440,
+    2440,
+    3880,
     3880,
     2760,
+    2760,
+    2588,
     2588,
     3880,
+    3880,
+    3400,
     3400,
 ]
 
@@ -50,15 +70,21 @@ class MarioLandOrchestrator(Orchestrator):
     def processEvalInfo(self, info: Dict[str, Any]):
         level = info["worldLevel"]
         progress = info["levelProgress"]
-        idx = levelsToIdxes[level]
+        idx = levels.index(level)
         if self.levelProgress[idx] is not None:
             self.levelProgress[idx].addProgress(progress)
         else:
             self.levelProgress[idx] = LevelProgress(self.window, progress)
 
     def evalInfoLogEntries(self, info: Dict[str, Any]) -> List[Tuple[str, Any]]:
-        world, level = info["worldLevel"]
-        return [(f"{world}-{level}_progress", info["levelProgress"])]
+        return [
+            (f"{info['worldLevel']}_progress", info["levelProgress"]),
+            (f"{info['worldLevel']}_deaths", info["deaths"]),
+            (f"{info['worldLevel']}_hearts", info["hearts"]),
+            (f"{info['worldLevel']}_powerups", info["powerups"]),
+            (f"{info['worldLevel']}_coins", info["coins"]),
+            (f"{info['worldLevel']}_score", info["score"]),
+        ]
 
     def postEval(self):
         if self.n_called >= self.warmup:

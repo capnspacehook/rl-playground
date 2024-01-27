@@ -157,6 +157,7 @@ def convertYPos(relYPos: int) -> int:
     return yPos
 
 
+TYPE_ID_MOVING_PLATFORM = 7
 _typeIDs = [
     ((0x0,), 1),  # goomba
     ((0x2, 0x55), 2),  # pirana plant
@@ -164,7 +165,7 @@ _typeIDs = [
     ((0x5,), 4),  # koopa bomb
     ((0x8,), 5),  # sphinx boss
     ((0x9,), 6),  # spitting plant
-    ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), 7),  # moving platforms
+    ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), TYPE_ID_MOVING_PLATFORM),  # moving platforms
     ((0xC, 0x35), 8),  # crush blocks
     ((0xE,), 9),  # moth/jumping spider
     ((0x10,), 10),  # fish
