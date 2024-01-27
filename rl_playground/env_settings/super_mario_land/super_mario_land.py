@@ -600,4 +600,4 @@ Boss: {curState.bossActive} {curState.bossHealth}
         print(s[1:], flush=True)
 
     def render(self):
-        return self.pyboy.botsupport_manager().screen().screen_ndarray()
+        return self.pyboy.screen_image()

@@ -1,8 +1,10 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
+from matplotlib.pyplot import waitforbuttonpress
 
 import numpy as np
 import optuna
+from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.callbacks import EvalCallback
@@ -10,6 +12,8 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.logger import TensorBoardOutputFormat, Video
 from stable_baselines3.common.vec_env import sync_envs_normalization
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
+import wandb
+from wandb.sdk.wandb_run import Run
 
 from rl_playground.env_settings.env_settings import Orchestrator
 
@@ -46,9 +50,7 @@ class RawStatisticsCallback(BaseCallback):
                 }
                 exclude_dict = {key: None for key in logger_dict.keys()}
                 self._timesteps_counter += info["episode"]["l"]
-                self._tensorboard_writer.write(
-                    logger_dict, exclude_dict, self._timesteps_counter
-                )
+                self._tensorboard_writer.write(logger_dict, exclude_dict, self._timesteps_counter)
 
         return True
 
@@ -58,6 +60,7 @@ class RecordAndEvalCallback(BaseCallback):
         self,
         eval_env: VecEnv,
         orchestrator: Orchestrator,
+        wabRun: Run,
         eval_freq: int = 0,
         n_eval_episodes: int = 1,
         model_save_path: Optional[Path] = None,
@@ -79,6 +82,7 @@ class RecordAndEvalCallback(BaseCallback):
 
         self.eval_env = eval_env
         self.orchestrator = orchestrator
+        self.wabRun = wabRun
         self._eval_freq = eval_freq
         self.best_mean_reward = -np.inf
         self.last_mean_reward = -np.inf
@@ -88,12 +92,8 @@ class RecordAndEvalCallback(BaseCallback):
         self._deterministic = deterministic
 
         if model_save_path is not None:
-            self.latest_model_save_path = str(
-                model_save_path / f"{model_save_prefix}_latest"
-            )
-            self.best_model_save_path = str(
-                model_save_path / f"{model_save_prefix}_best"
-            )
+            self.latest_model_save_path = str(model_save_path / f"{model_save_prefix}_latest")
+            self.best_model_save_path = str(model_save_path / f"{model_save_prefix}_best")
 
     def _on_step(self) -> bool:
         if self._eval_freq > 0 and self.n_calls % self._eval_freq == 0:
@@ -108,13 +108,7 @@ class RecordAndEvalCallback(BaseCallback):
                     logEntries = self.orchestrator.evalInfoLogEntries(info)
                     for entry in logEntries:
                         key, value = entry
-                        self.logger.record(
-                            f"eval/{key.lower()}", value, exclude=("stdout")
-                        )
-
-                screen = self.eval_env.render()
-                # PyTorch uses CxHxW vs HxWxC gym (and tensorflow) image convention
-                screens.append(screen.transpose(2, 0, 1))
+                        self.logger.record(f"eval/{key.lower()}", value, exclude=("stdout"))
 
             # sync training and eval env if there is VecNormalize
             if self.model.get_vec_normalize_env() is not None:
@@ -143,19 +137,11 @@ class RecordAndEvalCallback(BaseCallback):
 
             self.orchestrator.postEval()
 
-            # Add dimension to array so it's a 5-D array (the video encoder
-            # requires this for some reason)
-            screens = np.expand_dims(np.stack(screens), axis=0)
-            self.logger.record(
-                "eval/video",
-                Video(screens, fps=12),  # TODO: find dynamically
-                exclude=("stdout", "log", "json", "csv"),
-            )
+            if self.wabRun is not None:
+                self.wabRun.log({"eval_video": wandb.Video("/tmp/eval.mp4", fps=30)})
 
             mean_reward, std_reward = np.mean(episode_rewards), np.std(episode_rewards)
-            mean_ep_length, std_ep_length = np.mean(episode_lengths), np.std(
-                episode_lengths
-            )
+            mean_ep_length, std_ep_length = np.mean(episode_lengths), np.std(episode_lengths)
             self.last_mean_reward = float(mean_reward)
 
             if self.verbose >= 1:
@@ -169,9 +155,7 @@ class RecordAndEvalCallback(BaseCallback):
             self.logger.record("eval/mean_ep_length", mean_ep_length)
 
             # Dump log so the evaluation results are printed with the correct timestep
-            self.logger.record(
-                "time/total_timesteps", self.num_timesteps, exclude="tensorboard"
-            )
+            self.logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
             self.logger.dump(self.num_timesteps)
 
             if self.latest_model_save_path is not None:
@@ -250,17 +234,11 @@ class TrialEvalCallback(EvalCallback):
         return True
 
 
-def saveModel(
-    model: BaseAlgorithm, savePath: str, saveReplayBuffer: bool, saveVecNormalize: bool
-):
+def saveModel(model: BaseAlgorithm, savePath: str, saveReplayBuffer: bool, saveVecNormalize: bool):
     model.save(savePath + ".zip")
 
     # save replay buffer
-    if (
-        saveReplayBuffer
-        and hasattr(model, "replay_buffer")
-        and model.replay_buffer is not None
-    ):
+    if saveReplayBuffer and hasattr(model, "replay_buffer") and model.replay_buffer is not None:
         model.save_replay_buffer(savePath + "_rb.pkl")
 
     # save VecNormalize settings

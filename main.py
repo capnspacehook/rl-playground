@@ -129,6 +129,7 @@ def train(args):
             RecordAndEvalCallback(
                 evalEnv,
                 orchestrator,
+                wabRun,
                 n_eval_episodes=envSettings.evalEpisodes(),
                 eval_freq=callbackFreq,
                 model_save_path=saveDir,

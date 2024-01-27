@@ -13,7 +13,7 @@ from rl_playground.env_settings.super_mario_land.orchestrator import (
     MarioLandOrchestrator,
 )
 from rl_playground.envs.pyboy.pyboy_env import PyBoyEnv
-from rl_playground.envs.pyboy.wrappers import FrameSkip
+from rl_playground.envs.pyboy.wrappers import FrameSkip, Recorder
 
 
 def createPyboyEnv(
@@ -63,6 +63,8 @@ def createPyboyEnv(
     )
 
     env = Monitor(env)
+    if isEval:
+        env = Recorder(env, episode_num=envSettings.evalEpisodes())
     env = FrameSkip(env, skip=4)
     # make evaluations strictly deterministic
     if not isEval:
