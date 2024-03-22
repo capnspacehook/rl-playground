@@ -10,6 +10,7 @@ MARIO_X_POS_MEM_VAL = 0xC202
 MARIO_Y_POS_MEM_VAL = 0xC201
 MARIO_POSE_MEM_VAL = 0xC203
 WORLD_LEVEL_MEM_VAL = 0xFFB4
+NUM_WINS_MEM_VAL = 0xFF9A
 LIVES_LEFT_MEM_VAL = 0xDA15
 STATUS_TIMER_MEM_VAL = 0xFFA6
 GAME_STATE_MEM_VAL = 0xFFB3
@@ -75,6 +76,7 @@ class MarioLandGameState(GameState):
 
         world = self.pyboy.get_memory_value(WORLD_LEVEL_MEM_VAL)
         self.world = (world >> 4, world & 0x0F)
+        self.hardMode = self.pyboy.get_memory_value(NUM_WINS_MEM_VAL) != 0
         self.livesLeft = bcm_to_dec(self.pyboy.get_memory_value(LIVES_LEFT_MEM_VAL))
         self.coins = bcm_to_dec(self.pyboy.get_memory_value(COINS_MEM_VAL))
         self.score = bcm_to_dec(self.pyboy.get_memory_value(SCORE_MEM_VAL))
@@ -83,6 +85,13 @@ class MarioLandGameState(GameState):
         self.statusTimer = self.pyboy.get_memory_value(STATUS_TIMER_MEM_VAL)
         self.gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
         self.onGround = self.pyboy.get_memory_value(MARIO_ON_GROUND_MEM_VAL) == 1
+
+        self.pipeWarping = False
+        self.underground = False
+        if self.gameState in (0x9, 0xA, 0xB, 0xC):
+            self.pipeWarping = True
+            if self.gameState in (0x9, 0xA):
+                self.underground = True
 
         timerHundreds = self.pyboy.get_memory_value(TIMER_HUNDREDS)
         timerTens = bcm_to_dec(self.pyboy.get_memory_value(TIMER_TENS))
@@ -197,7 +206,7 @@ for gameIDs, obsID in _typeIDs:
 
 
 class MarioLandObject:
-    def __init__(self, typeID, relX, x, y) -> None:
+    def __init__(self, typeID: int, relX: int, x: int, y: int) -> None:
         self.typeID = typeID
         self.relXPos = relX
         self.xPos = x

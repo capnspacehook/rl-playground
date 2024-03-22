@@ -212,7 +212,7 @@ def findObjectInPrevState(obj: MarioLandObject, prevState: MarioLandGameState) -
 
 def calculateMeanSpeeds(
     states: Deque[MarioLandGameState], obj: MarioLandObject, rawXSpeeds: List[int], rawYSpeeds: List[int]
-) -> (float, float):
+) -> Tuple[float, float]:
     # we already have the previous and current raw speeds
     for i in range(N_STATE_STACK - 2):
         state = states[i]
@@ -233,13 +233,17 @@ def getScalarFeatures(curState: MarioLandGameState) -> np.ndarray:
         np.concatenate(
             (
                 oneHotEncoding(curState.powerupStatus, POWERUP_STATUSES),
-                np.array([float(curState.hasStar)], dtype=np.float32),
                 np.array(
                     [
+                        float(curState.hasStar),
                         scaledEncoding(curState.invincibleTimer, MAX_INVINCIBILITY_TIME, True),
                         scaledEncoding(curState.livesLeft, 99, True),
                         scaledEncoding(curState.coins, 99, True),
                         scaledEncoding(curState.timeLeft, 400, True),
+                        scaledEncoding(curState.world[0], 4, True),
+                        scaledEncoding(curState.world[1], 3, True),
+                        float(curState.hardMode),
+                        float(curState.underground),
                     ],
                     dtype=np.float32,
                 ),

@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Any, Deque, Dict, List
+from typing import Any, Deque, Dict, List, Tuple
 from os import listdir
 from os.path import basename, isfile, join, splitext
 import random
@@ -53,6 +53,7 @@ class MarioLandSettings(EnvSettings):
         self.evalNoProgress = 0
         self.evalEpisodeCounter = 0
         self.invincibilityTimer = 0
+        self.underground = False
 
         self.deathCounter = 0
         self.heartCounter = 0
@@ -67,7 +68,7 @@ class MarioLandSettings(EnvSettings):
         self.levelProgressMax = 0
         self.onGroundFor = 0
 
-    def reset(self, options: dict[str, Any] | None = None) -> (Any, MarioLandGameState, bool):
+    def reset(self, options: dict[str, Any] | None = None) -> Tuple[Any, MarioLandGameState, bool]:
         if options is not None:
             if "_eval_starting" in options:
                 # this will be passed before evals are started, reset the eval
@@ -238,6 +239,7 @@ class MarioLandSettings(EnvSettings):
     def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
         self.evalNoProgress = 0
         self.onGroundFor = 0
+        self.underground = False
 
         # reset the game state cache
         if resetCaches:
@@ -267,7 +269,7 @@ class MarioLandSettings(EnvSettings):
 
         return combineObservations(self.observationCaches)
 
-    def reward(self, prevState: MarioLandGameState) -> (float, MarioLandGameState):
+    def reward(self, prevState: MarioLandGameState) -> Tuple[float, MarioLandGameState]:
         curState = self.gameState()
         self.levelProgressMax = max(self.levelProgressMax, curState.xPos)
         curState.levelProgressMax = self.levelProgressMax
@@ -423,9 +425,18 @@ class MarioLandSettings(EnvSettings):
             clock + movement + score + coins + movingPlatform + standingOnBoulder + powerup + heart + boss
         )
 
+        # handle going in pipe
+        if curState.pipeWarping:
+            gameState = curState.gameState
+            while gameState != 0:
+                self.pyboy.tick()
+                gameState = self.pyboy.get_memory_value(GAME_STATE_MEM_VAL)
+
+            curState = self.gameState()
+
         return reward, curState
 
-    def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> (MarioLandObject | None, bool):
+    def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> Tuple[MarioLandObject | None, bool]:
         for obj in curState.objects:
             if obj.typeID == TYPE_ID_MOVING_PLATFORM and curState.yPos - 10 == obj.yPos:
                 return obj, True
@@ -552,7 +563,7 @@ class MarioLandSettings(EnvSettings):
     def observationSpace(self) -> Space:
         return observationSpace()
 
-    def normalize(self) -> (bool, bool):
+    def normalize(self) -> Tuple[bool, bool]:
         return False, True
 
     def hyperParameters(self, algo: str) -> Dict[str, Any]:
@@ -595,6 +606,7 @@ Rel X, Y {curState.relXPos} {curState.relYPos}
 Speeds: {round(curState.meanXSpeed, 3)} {round(curState.meanYSpeed, 3)} {round(curState.xAccel, 3)} {round(curState.yAccel, 3)}
 Invincibility: {curState.gotStar} {curState.hasStar} {curState.isInvincible} {curState.invincibleTimer}
 Boss: {curState.bossActive} {curState.bossHealth}
+Game state: {curState.gameState}
 {objects}
 """
         print(s[1:], flush=True)

@@ -13,7 +13,7 @@ N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Time settings
 STARTING_TIME = 400
-DEATH_EXTRA_TIME = 30
+DEATH_EXTRA_TIME = 10
 
 # Reward values
 HIT_PUNISHMENT = -10
@@ -23,7 +23,7 @@ GAME_OVER_PUNISHMENT = -50
 # TODO: linearly increase to encourage progress over speed
 # earlier, then after game mechanics and levels are learned
 # encourage speed more
-CLOCK_PUNISHMENT = -0.01
+CLOCK_PUNISHMENT = 0
 SCORE_REWARD_COEF = 0.01
 COIN_REWARD = 2  # +100 score when getting a coin must be factored in
 FORWARD_REWARD_COEF = 1

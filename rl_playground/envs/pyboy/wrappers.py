@@ -20,11 +20,12 @@ actionsToText = {
 
 
 class Recorder(gym.Wrapper):
-    def __init__(self, env, episode_num=1, rec_steps=2, reward_steps=4):
+    def __init__(self, env, episode_num=1, native_fps=60, rec_steps=2, reward_steps=4):
         super().__init__(env)
         self.env = env
 
         self.episode_num = episode_num
+        self.native_fps = native_fps
         self.rec_steps = rec_steps
         self.reward_steps = reward_steps
         self.font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf", 12)
@@ -72,14 +73,13 @@ class Recorder(gym.Wrapper):
     def stop_recording(self):
         print("Writing eval video")
 
-        v = ImageSequenceClip(self.frames, fps=60 / self.rec_steps)
+        v = ImageSequenceClip(self.frames, fps=self.native_fps / self.rec_steps)
         v.write_videofile(
             filename="/tmp/eval.mp4",
             codec="libx264",
-            bitrate="8000k",
+            bitrate="4000k",
             preset="slow",
             threads=24,
-            # ffmpeg_params=["-crf", "31", "-b:v", "0"],
             logger=None,
         )
         v.close()
