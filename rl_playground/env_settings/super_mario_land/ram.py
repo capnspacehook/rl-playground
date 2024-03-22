@@ -75,7 +75,7 @@ class MarioLandGameState(GameState):
 
         world = self.pyboy.memory[WORLD_LEVEL_MEM_VAL]
         self.world = (world >> 4, world & 0x0F)
-        # self.hardMode = self.pyboy.memory[NUM_WINS_MEM_VAL] != 0
+        self.hardMode = self.pyboy.memory[NUM_WINS_MEM_VAL] != 0
         self.livesLeft = bcm_to_dec(self.pyboy.memory[LIVES_LEFT_MEM_VAL])
         self.coins = bcm_to_dec(self.pyboy.memory[COINS_MEM_VAL])
         self.score = bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL])
