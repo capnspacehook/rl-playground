@@ -1,5 +1,7 @@
 from collections import deque
-from typing import Any, Deque, Dict, List, Tuple
+import hashlib
+from math import floor
+from typing import Any, Deque, Dict, List, Tuple, Tuple
 from os import listdir
 from os.path import basename, isfile, join, splitext
 import random
@@ -9,6 +11,7 @@ import numpy as np
 from gymnasium.spaces import Discrete, Space
 from pyboy import PyBoy
 from pyboy.utils import WindowEvent
+from sqlalchemy import create_engine
 
 from rl_playground.env_settings.env_settings import EnvSettings
 from rl_playground.env_settings.super_mario_land.constants import (
@@ -25,6 +28,7 @@ from rl_playground.env_settings.super_mario_land.observation import (
 )
 from rl_playground.env_settings.super_mario_land.ram import *
 from rl_playground.env_settings.super_mario_land.settings import *
+from rl_playground.go_explore.state_manager import StateManager
 
 
 class MarioLandSettings(EnvSettings):
@@ -59,24 +63,28 @@ class MarioLandSettings(EnvSettings):
         self.powerupCounter = 0
         self.coinCounter = 0
 
-        self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
-
-        # all levels are equally likely to be trained on at the start
-        self.levelChooseProbs = [0.05 for _ in range(20)]
-
         self.levelProgressMax = 0
         self.onGroundFor = 0
 
-    def reset(self, options: dict[str, Any] | None = None) -> Tuple[Any, MarioLandGameState, bool]:
-        if options is not None:
-            if "_eval_starting" in options:
-                # this will be passed before evals are started, reset the eval
-                # state counter so all evals will start at the same state
-                self.evalStateCounter = 0
-                self.evalEpisodeCounter = 0
-            elif "_update_level_choose_probs" in options:
-                # an eval has ended, update the level choose probabilities
-                self.levelChooseProbs = options["_update_level_choose_probs"]
+        self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
+
+        engine = create_engine("postgresql+psycopg://postgres:password@localhost/postgres")
+        self.stateManager = StateManager(engine)
+        for stateFile in self.stateFiles:
+            with open(stateFile, "rb") as f:
+                self.pyboy.load_state(f)
+                curState = self.gameState()
+                cellHash = self.cell_hash(curState)
+
+                state = f.read()
+                self.stateManager.insert_initial_cell(cellHash, RANDOM_NOOP_FRAMES, state)
+
+    def reset(self, options: dict[str, Any]) -> Tuple[Any, MarioLandGameState, bool]:
+        if "_eval_starting" in options:
+            # this will be passed before evals are started, reset the eval
+            # state counter so all evals will start at the same state
+            self.evalStateCounter = 0
+            self.evalEpisodeCounter = 0
 
             curState = self.gameState()
             return self.observation(options["_prevState"], curState), curState, False
@@ -101,10 +109,7 @@ class MarioLandSettings(EnvSettings):
 
             self.evalEpisodeCounter += 1
         else:
-            # reset game state to a random level
-            level = np.random.choice(20, p=self.levelChooseProbs)
-            checkpoint = np.random.randint(3)
-            self.stateIdx = (3 * level) + checkpoint
+            self.cellID, isInitial, maxNOOPs, state = options["_cell_state"]
 
         curState = self._loadLevel()
 
@@ -522,6 +527,20 @@ class MarioLandSettings(EnvSettings):
             or (self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR))
             or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
         )
+
+    def cell_hash(self, curState: MarioLandGameState) -> str | None:
+        if self.onGroundFor != 2:
+            return None
+
+        roundedXPos = X_POS_MULTIPLE * floor(curState.xPos / X_POS_MULTIPLE)
+        roundedYPos = Y_POS_MULTIPLE * floor(curState.yPos / Y_POS_MULTIPLE)
+
+        objectTypes = ""
+        for obj in curState.objects:
+            objectTypes += f"{obj.typeID}|"
+
+        input = f"{curState.world}{curState.hardMode}{roundedXPos}{roundedYPos}{self.underground}{curState.powerupStatus}{objectTypes}"
+        return hashlib.md5(input).hexdigest()
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
         return curState.gameState in (1, 3)

@@ -1,0 +1,18 @@
+version: "2"
+sql:
+- schema: "rl_playground/go_explore/schema.sql"
+  queries: "rl_playground/go_explore/queries.sql"
+  engine: postgresql
+  codegen:
+  - out: rl_playground/go_explore
+    plugin: py
+    options:
+      package: go_explore
+      emit_sync_querier: true
+      emit_async_querier: false
+      query_parameter_limit: 5
+plugins:
+- name: py
+  wasm:
+    url: https://downloads.sqlc.dev/plugin/sqlc-gen-python_1.2.0.wasm
+    sha256: a6c5d174c407007c3717eea36ff0882744346e6ba991f92f71d6ab2895204c0e
