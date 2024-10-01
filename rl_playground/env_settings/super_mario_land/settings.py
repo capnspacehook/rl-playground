@@ -12,8 +12,9 @@ N_SCALAR_OBS_STACK = 2  # number of scalar observations to stack
 N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 
 # Time settings
+MIN_TIME = 10
 STARTING_TIME = 400
-DEATH_EXTRA_TIME = 10
+DEATH_TIME_LOSS = 10
 
 # Reward values
 HIT_PUNISHMENT = -10

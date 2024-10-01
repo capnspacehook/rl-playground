@@ -285,7 +285,7 @@ class MarioLandSettings(EnvSettings):
                 return GAME_OVER_PUNISHMENT + consecutiveDeaths, curState
 
             # don't let the game set the timer back to max time
-            timer = min(curState.timeLeft + DEATH_EXTRA_TIME, STARTING_TIME)
+            timer = np.clip(curState.timeLeft - DEATH_TIME_LOSS, MIN_TIME, STARTING_TIME)
 
             # skip frames where mario is dying
             statusTimer = curState.statusTimer
