@@ -106,7 +106,7 @@ class PyBoyEnv(Env):
         elif not self.isPlaytest:
             self.sendInputs(actions)
 
-        pyboyStillRunning = self.pyboy.tick()
+        pyboyStillRunning = self.pyboy.tick(render=self.isEval)
         reward, curGameState = self.envSettings.reward(self.prevGameState)
 
         obs = self.envSettings.observation(self.prevGameState, curGameState)

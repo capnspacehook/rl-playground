@@ -203,7 +203,7 @@ class MarioLandSettings(EnvSettings):
         # a random amount of frames to make entity placements varied
         if len(curState.objects) != 0:
             nopFrames = random.randint(0, RANDOM_NOOP_FRAMES)
-            self.pyboy.tick(count=nopFrames)
+            self.pyboy.tick(count=nopFrames, render=False)
 
         # reset max level progress
         self.levelProgressMax = curState.xPos
@@ -223,14 +223,14 @@ class MarioLandSettings(EnvSettings):
         startingMovement = random.randint(0, 2)
         if startingMovement == 1:
             self.pyboy.send_input(WindowEvent.PRESS_ARROW_LEFT)
-            self.pyboy.tick()
+            self.pyboy.tick(render=False)
             self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
-            self.pyboy.tick()
+            self.pyboy.tick(render=False)
         elif startingMovement == 2:
             self.pyboy.send_input(WindowEvent.PRESS_ARROW_RIGHT)
-            self.pyboy.tick()
+            self.pyboy.tick(render=False)
             self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
-            self.pyboy.tick()
+            self.pyboy.tick(render=False)
 
     def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
         self.evalNoProgress = 0
@@ -285,11 +285,11 @@ class MarioLandSettings(EnvSettings):
             statusTimer = curState.statusTimer
             gameState = curState.gameState
             while gameState in (3, 4) or (gameState == 1 and statusTimer != 0):
-                self.pyboy.tick()
+                self.pyboy.tick(render=False)
                 gameState = self.pyboy.memory[GAME_STATE_MEM_VAL]
                 statusTimer = self.pyboy.memory[STATUS_TIMER_MEM_VAL]
 
-            self.pyboy.tick(count=5)
+            self.pyboy.tick(count=5, render=False)
 
             self._setStartingPos()
 
@@ -422,7 +422,7 @@ class MarioLandSettings(EnvSettings):
         if curState.pipeWarping:
             gameState = curState.gameState
             while gameState != 0:
-                self.pyboy.tick()
+                self.pyboy.tick(render=False)
                 gameState = self.pyboy.memory[GAME_STATE_MEM_VAL]
 
             curState = self.gameState()
@@ -605,4 +605,4 @@ Game state: {curState.gameState}
         print(s[1:], flush=True)
 
     def render(self):
-        return self.pyboy.screen_image()
+        return self.pyboy.screen.image.copy()
