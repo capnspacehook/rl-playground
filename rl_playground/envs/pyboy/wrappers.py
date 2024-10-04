@@ -3,7 +3,7 @@ import numpy as np
 from PIL import ImageFont
 from PIL import ImageDraw
 from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
-from pyboy import WindowEvent
+from pyboy.utils import WindowEvent
 
 
 actionsToText = {
