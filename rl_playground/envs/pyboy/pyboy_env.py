@@ -28,6 +28,7 @@ class PyBoyEnv(Env):
         self.isEval = isEval
         self.isPlaytest = isPlaytest
         self.isInteractiveEval = isInteractiveEval
+        self.shouldRender = render or self.isEval or self.isPlaytest or self.isInteractiveEval
         self.episodeNum = 0
         self.curInfo = dict()
         self.outputDir = outputDir
@@ -106,7 +107,7 @@ class PyBoyEnv(Env):
         elif not self.isPlaytest:
             self.sendInputs(actions)
 
-        pyboyStillRunning = self.pyboy.tick(render=self.isEval)
+        pyboyStillRunning = self.pyboy.tick(render=self.shouldRender)
         reward, curGameState = self.envSettings.reward(self.prevGameState)
 
         obs = self.envSettings.observation(self.prevGameState, curGameState)

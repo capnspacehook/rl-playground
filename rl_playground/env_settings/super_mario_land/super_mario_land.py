@@ -48,9 +48,7 @@ class MarioLandSettings(EnvSettings):
         self.isEval = isEval
         self.stateIdx = 0
         self.levelStr = ""
-        self.evalStateCounter = 0
         self.evalNoProgress = 0
-        self.evalEpisodeCounter = 0
         self.invincibilityTimer = 0
         self.underground = False
 
@@ -61,23 +59,11 @@ class MarioLandSettings(EnvSettings):
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
 
-        # all levels are equally likely to be trained on at the start
-        self.levelChooseProbs = [0.05 for _ in range(20)]
-
         self.levelProgressMax = 0
         self.onGroundFor = 0
 
     def reset(self, options: dict[str, Any] | None = None) -> Tuple[Any, MarioLandGameState, bool]:
         if options is not None:
-            if "_eval_starting" in options:
-                # this will be passed before evals are started, reset the eval
-                # state counter so all evals will start at the same state
-                self.evalStateCounter = 0
-                self.evalEpisodeCounter = 0
-            elif "_update_level_choose_probs" in options:
-                # an eval has ended, update the level choose probabilities
-                self.levelChooseProbs = options["_update_level_choose_probs"]
-
             curState = self.gameState()
             return self.observation(options["_prevState"], curState), curState, False
 
@@ -87,24 +73,8 @@ class MarioLandSettings(EnvSettings):
         self.powerupCounter = 0
         self.coinCounter = 0
 
-        if self.isEval:
-            # evaluate levels in order, each level in easy and hard mode
-            # then the next level
-            self.stateIdx = self.evalStateCounter
-            # don't start from checkpoints
-            if self.evalEpisodeCounter % 2 == 0:
-                self.evalStateCounter += 1
-            else:
-                self.evalStateCounter += 5
-            if self.evalStateCounter >= len(self.stateFiles):
-                self.evalStateCounter = 0
-
-            self.evalEpisodeCounter += 1
-        else:
-            # reset game state to a random level
-            level = np.random.choice(20, p=self.levelChooseProbs)
-            checkpoint = np.random.randint(3)
-            self.stateIdx = (3 * level) + checkpoint
+        # start at the beginning of the first level
+        self.stateIdx = 0
 
         curState = self._loadLevel()
 
@@ -132,7 +102,7 @@ class MarioLandSettings(EnvSettings):
 
         self._setStartingPos()
 
-        livesLeft = 1
+        livesLeft = 2
         coins = 0
         if transferState:
             livesLeft = prevState.livesLeft
@@ -199,11 +169,12 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.memory[COINS_DISPLAY_MEM_VAL] = coins // 10
         self.pyboy.memory[COINS_DISPLAY_MEM_VAL + 1] = coins % 10
 
-        # if we're starting from a state with entities do nothing for
-        # a random amount of frames to make entity placements varied
-        if len(curState.objects) != 0:
-            nopFrames = random.randint(0, RANDOM_NOOP_FRAMES)
-            self.pyboy.tick(count=nopFrames, render=False)
+        if not self.isEval:
+            # if we're starting from a state with entities do nothing for
+            # a random amount of frames to make entity placements varied
+            if len(curState.objects) != 0:
+                nopFrames = random.randint(0, RANDOM_NOOP_FRAMES)
+                self.pyboy.tick(count=nopFrames, render=False)
 
         # reset max level progress
         self.levelProgressMax = curState.xPos
@@ -314,23 +285,18 @@ class MarioLandSettings(EnvSettings):
             elif curState.powerupStatus == STATUS_FIRE:
                 levelClear += LEVEL_CLEAR_FIRE_REWARD
 
-            # if we're evaluating and the level is cleared return, the
-            # episode is over; otherwise load the next level directly
-            # to avoid processing unnecessary frames and the AI playing
-            # levels we don't want it to
-            if self.isEval:
+            # load the next level directly to avoid processing
+            # unnecessary frames and the AI playing levels we
+            # don't want it to
+            self.stateIdx += 7 - (self.stateIdx % 7)
+            if self.stateIdx >= len(self.stateFiles):
                 return levelClear, curState
-            else:
-                # load start of next level, not a level checkpoint
-                self.stateIdx += 6 - (self.stateIdx % 6)
-                if self.stateIdx >= len(self.stateFiles):
-                    self.stateIdx = 0
 
-                # keep lives and powerup in new level
-                curState = self._loadLevel(prevState=prevState, transferState=True)
-                # don't reset state and observation caches so the agent can
-                # see that it started a new level
-                self._reset(curState, False, STARTING_TIME)
+            # keep lives and powerup in new level
+            curState = self._loadLevel(prevState=prevState, transferState=True)
+            # don't reset state and observation caches so the agent can
+            # see that it started a new level
+            self._reset(curState, False, STARTING_TIME)
 
             return levelClear, curState
 
@@ -392,7 +358,7 @@ class MarioLandSettings(EnvSettings):
         # keep track of how long the agent is idle so we can end early
         # in an evaluation
         if self.isEval:
-            if curState.levelProgressMax - prevState.levelProgressMax == 0:
+            if curState.levelProgressMax == prevState.levelProgressMax:
                 self.evalNoProgress += 1
             else:
                 self.evalNoProgress = 0
@@ -512,14 +478,13 @@ class MarioLandSettings(EnvSettings):
         return self._isDead(curState) and curState.livesLeft == 0
 
     def truncated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
-        # TODO: remove once star bug has been fixed
-        # If no forward progress has been made in 15s, end the eval episode.
+        # If no forward progress has been made in 20s, end the eval episode.
         # If the level is completed end this episode so the next level
         # isn't played twice. If 4-2 is completed end the episode, that's
         # final normal level so there's no level to start after it.
         return (
-            curState.hasStar
-            or (self.isEval and (self.evalNoProgress == 900 or curState.statusTimer == TIMER_LEVEL_CLEAR))
+            curState.hasStar  # TODO: remove once star bug has been fixed
+            or (self.isEval and self.evalNoProgress == 1200)
             or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
         )
 
@@ -531,7 +496,7 @@ class MarioLandSettings(EnvSettings):
             [WindowEvent.PASS],
             [WindowEvent.PRESS_ARROW_LEFT],
             [WindowEvent.PRESS_ARROW_RIGHT],
-            [WindowEvent.PRESS_ARROW_DOWN],
+            # [WindowEvent.PRESS_ARROW_DOWN],
             [WindowEvent.PRESS_BUTTON_B],
             [WindowEvent.PRESS_BUTTON_A],
             [WindowEvent.PRESS_BUTTON_B, WindowEvent.PRESS_BUTTON_A],
@@ -567,7 +532,8 @@ class MarioLandSettings(EnvSettings):
                 return {}
 
     def evalEpisodes(self) -> int:
-        return len(self.stateFiles) // 3
+        # TODO: return 2/3 if normal/hard levels should be evaled
+        return 1
 
     def gameState(self):
         return MarioLandGameState(self.pyboy)

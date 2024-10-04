@@ -68,6 +68,7 @@ class MarioLandOrchestrator(Orchestrator):
         super().__init__(env)
 
     def processEvalInfo(self, info: Dict[str, Any]):
+        return
         level = info["worldLevel"]
         progress = info["levelProgress"]
         idx = levels.index(level)
@@ -87,6 +88,9 @@ class MarioLandOrchestrator(Orchestrator):
         ]
 
     def postEval(self):
+        super().postEval()
+        return
+
         if self.n_called >= self.warmup:
             probs = [0] * len(levelEndPositions)
             for idx, progress in enumerate(self.levelProgress):
@@ -108,7 +112,6 @@ class MarioLandOrchestrator(Orchestrator):
             # normalize probabilities
             totalProb = sum(probs)
             probs = [prob / totalProb for prob in probs]
-            print(probs)
 
             options = {"_update_level_choose_probs": probs}
             self.env.set_options(options)
