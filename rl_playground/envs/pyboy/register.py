@@ -49,7 +49,7 @@ def createPyboyEnv(
     env = PyBoyEnv(
         pyboy,
         envSettings,
-        render == render,
+        render=render,
         isEval=isEval,
         isPlaytest=isPlaytest,
         isInteractiveEval=isInteractiveEval,

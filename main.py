@@ -76,7 +76,9 @@ def train(args):
 
     orchestrator = orchClass(trainingEnv)
 
-    projectName = gameName.replace("_", " ").title()
+    projectName = args.project_name
+    if projectName == "":
+        projectName = gameName.replace("_", " ").title()
 
     config["device"] = args.device
     if "policy_kwargs" in config and "features_extractor_kwargs" in config["policy_kwargs"]:
@@ -304,6 +306,9 @@ if __name__ == "__main__":
         "--model-checkpoint",
         type=Path,
         help="path to model checkpoint to resume training from",
+    )
+    parser.add_argument(
+        "-p", "--project-name", type=str, default="", help="name of the Weights and Biases project to use"
     )
     parser.add_argument(
         "-n",
