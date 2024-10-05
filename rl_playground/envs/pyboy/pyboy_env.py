@@ -2,7 +2,6 @@ from pathlib import Path
 import random
 from typing import Any
 
-import pandas
 from gymnasium import Env
 from pyboy import PyBoy
 from pyboy.utils import WindowEvent
@@ -24,12 +23,10 @@ class PyBoyEnv(Env):
         self.pyboy = pyboy
         self.envSettings = envSettings
         self.prevGameState: GameState | None = None
-        self._started = False
         self.isEval = isEval
         self.isPlaytest = isPlaytest
         self.isInteractiveEval = isInteractiveEval
         self.shouldRender = render or self.isEval or self.isPlaytest or self.isInteractiveEval
-        self.episodeNum = 0
         self.curInfo = dict()
         self.outputDir = outputDir
 
@@ -79,15 +76,15 @@ class PyBoyEnv(Env):
 
         if options is not None:
             options["_prevState"] = self.prevGameState
-        obs, self.prevGameState, envReset = self.envSettings.reset(options=options)
+        obs, self.prevGameState, envReset, results = self.envSettings.reset(options=options)
 
         if envReset:
-            if not self._started:
-                self._started = True
-            else:
-                self.episodeNum += 1
-
             self.button_is_pressed = {button: False for button in self._buttons}
+            prevAction = results.get("_prev_action")
+            if prevAction is not None:
+                actions = self.actions[prevAction]
+                for action in actions:
+                    self.button_is_pressed[action] = True
 
         return obs, {}
 
@@ -109,6 +106,7 @@ class PyBoyEnv(Env):
 
         pyboyStillRunning = self.pyboy.tick(render=self.shouldRender)
         reward, curGameState = self.envSettings.reward(self.prevGameState)
+        self.envSettings.postStep(self.prevGameState, curGameState, int(action_idx), reward)
 
         obs = self.envSettings.observation(self.prevGameState, curGameState)
         terminated = not pyboyStillRunning or self.envSettings.terminated(self.prevGameState, curGameState)

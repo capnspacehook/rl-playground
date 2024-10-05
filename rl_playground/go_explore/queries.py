@@ -8,7 +8,7 @@ from typing import Optional
 
 import sqlalchemy
 
-from go_explore import models
+from rl_playground.go_explore import models
 
 
 CELL_EXISTS = """-- name: cell_exists \\:one
@@ -20,20 +20,52 @@ SELECT EXISTS(
 """
 
 
+GET_FIRST_CELL = """-- name: get_first_cell \\:one
+SELECT id, action, max_no_ops, initial, state
+FROM cells
+ORDER BY id
+LIMIT 1
+"""
+
+
+@dataclasses.dataclass()
+class GetFirstCellRow:
+    id: int
+    action: Optional[int]
+    max_no_ops: Optional[int]
+    initial: bool
+    state: memoryview
+
+
 GET_RANDOM_CELL = """-- name: get_random_cell \\:one
 WITH mean_scores AS (
-    SELECT cs.cell_id AS cell_id, AVG(score) AS mean_score
-    FROM cell_scores AS cs
-    GROUP BY cs.cell_id
-    ORDER BY cs.cell_id DESC
-    LIMIT 100
+    -- get mean of last 100 scores of all cells
+    SELECT cell_id, AVG(score) AS mean_score
+    FROM (
+        SELECT cell_id, score, ROW_NUMBER() OVER (PARTITION BY cell_id ORDER BY id DESC) AS rn
+        FROM cell_scores
+    ) AS desc_scores
+    WHERE rn <= 100
+    GROUP BY cell_id
 ), weights AS (
-    SELECT c.id AS id, (100 / SQRT(c.visits + 1)) + SUM(ms.mean_score) AS weight
+    -- create weights for each cell based on number of visits and mean score
+    -- less visits and a lower mean score results in a higher weight
+    -- mean score is prioritized over number of visits
+    SELECT 
+        c.id AS id,
+        (100 / SQRT(c.visits + 1)) + (
+            (
+                SELECT MAX(mean_score) AS max_score
+                FROM mean_scores
+            ) - SUM(ms.mean_score)
+        ) AS weight
     FROM cells AS c
     JOIN mean_scores AS ms
     ON ms.cell_id = c.id
     GROUP BY c.id
 ), rand_pick AS (
+    -- create value that will be used to pick a random cell
+    -- multiply random number by sum of all weights so the weights don't have to add up to 100
     SELECT random() * (SELECT SUM(weight) FROM weights) pick
 ), rand_id AS (
     SELECT id
@@ -60,12 +92,21 @@ class GetRandomCellRow:
     state: memoryview
 
 
-INSERT_CELL = """-- name: insert_cell \\:exec
+INCREMENT_CELL_VISIT = """-- name: increment_cell_visit \\:exec
+UPDATE cells
+SET visits = visits + 1
+WHERE id = :p1
+"""
+
+
+INSERT_CELL = """-- name: insert_cell \\:one
 INSERT INTO cells (
     hash, action, max_no_ops, initial, state
 ) VALUES (
     :p1, :p2, :p3, :p4, :p5
 )
+ON CONFLICT DO NOTHING
+RETURNING id
 """
 
 
@@ -88,6 +129,18 @@ class Querier:
             return None
         return row[0]
 
+    def get_first_cell(self) -> Optional[GetFirstCellRow]:
+        row = self._conn.execute(sqlalchemy.text(GET_FIRST_CELL)).first()
+        if row is None:
+            return None
+        return GetFirstCellRow(
+            id=row[0],
+            action=row[1],
+            max_no_ops=row[2],
+            initial=row[3],
+            state=row[4],
+        )
+
     def get_random_cell(self) -> Optional[GetRandomCellRow]:
         row = self._conn.execute(sqlalchemy.text(GET_RANDOM_CELL)).first()
         if row is None:
@@ -100,14 +153,20 @@ class Querier:
             state=row[4],
         )
 
-    def insert_cell(self, *, hash: str, action: Optional[int], max_no_ops: Optional[int], initial: bool, state: memoryview) -> None:
-        self._conn.execute(sqlalchemy.text(INSERT_CELL), {
+    def increment_cell_visit(self, *, id: int) -> None:
+        self._conn.execute(sqlalchemy.text(INCREMENT_CELL_VISIT), {"p1": id})
+
+    def insert_cell(self, *, hash: str, action: Optional[int], max_no_ops: Optional[int], initial: bool, state: memoryview) -> Optional[int]:
+        row = self._conn.execute(sqlalchemy.text(INSERT_CELL), {
             "p1": hash,
             "p2": action,
             "p3": max_no_ops,
             "p4": initial,
             "p5": state,
-        })
+        }).first()
+        if row is None:
+            return None
+        return row[0]
 
     def insert_cell_score(self, *, cell_id: int, score: decimal.Decimal) -> None:
         self._conn.execute(sqlalchemy.text(INSERT_CELL_SCORE), {"p1": cell_id, "p2": score})

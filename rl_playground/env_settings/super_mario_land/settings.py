@@ -63,8 +63,9 @@ MIN_PROB = 0.01
 MAX_PROB = 0.99
 
 # Cell selection settings
-X_POS_MULTIPLE = 100
+X_POS_MULTIPLE = 150
 Y_POS_MULTIPLE = 20
+FRAME_CELL_CHECK = 8
 
 
 def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:

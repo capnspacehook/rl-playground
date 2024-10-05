@@ -1,3 +1,4 @@
+import decimal
 from typing import Tuple
 
 import sqlalchemy
@@ -9,25 +10,46 @@ class StateManager(object):
     def __init__(self, engine: sqlalchemy.Engine) -> None:
         self.engine = engine
 
+    def cell_exists(self, hash: str) -> bool:
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            return q.cell_exists(hash=hash)
+
     def insert_initial_cell(self, hash: str, max_no_ops: int | None, state: memoryview):
         with self.engine.connect() as conn:
             q = Querier(conn)
-            q.insert_cell(hash, None, max_no_ops, True, state)
+            id = q.insert_cell(hash=hash, action=None, max_no_ops=max_no_ops, initial=True, state=state)
+            if id is None:
+                return
+            q.insert_cell_score(cell_id=id, score=decimal.Decimal(0))
             conn.commit()
-
-    def is_cell_new(self, hash: str) -> bool:
-        with self.engine.connect() as conn:
-            q = Querier(conn)
-            return q.cell_exists(hash)
 
     def insert_cell(self, hash: str, action: int, max_no_ops: int | None, state: memoryview):
         with self.engine.connect() as conn:
             q = Querier(conn)
-            q.insert_cell(hash, action, max_no_ops, False, state)
+            id = q.insert_cell(hash=hash, action=action, max_no_ops=max_no_ops, initial=False, state=state)
+            if id is None:
+                return
+            q.insert_cell_score(cell_id=id, score=decimal.Decimal(0))
             conn.commit()
 
     def get_random_cell(self) -> Tuple[int, int, int, bool, memoryview]:
         with self.engine.connect() as conn:
             q = Querier(conn)
-            id, action, max_no_ops, initial, state = q.get_random_cell()
-            return id, action, max_no_ops, initial, state
+            result = q.get_random_cell()
+            if result is None:
+                result = q.get_first_cell()
+            return result.id, result.action, result.max_no_ops, result.initial, result.state
+
+    def get_first_cell(self) -> Tuple[int, int, int, bool, memoryview]:
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            result = q.get_first_cell()
+            return result.id, result.action, result.max_no_ops, result.initial, result.state
+
+    def record_score(self, cell_id: int, score: float):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.insert_cell_score(cell_id=cell_id, score=decimal.Decimal(score))
+            q.increment_cell_visit(id=cell_id)
+            conn.commit()

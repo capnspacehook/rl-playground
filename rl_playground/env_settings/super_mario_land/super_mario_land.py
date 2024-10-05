@@ -1,6 +1,7 @@
 from collections import deque
 import hashlib
 from math import floor
+from io import BytesIO
 from typing import Any, Deque, Dict, List, Tuple, Tuple
 from os import listdir
 from os.path import basename, isfile, join, splitext
@@ -31,6 +32,19 @@ from rl_playground.env_settings.super_mario_land.settings import *
 from rl_playground.go_explore.state_manager import StateManager
 
 
+worldToNextLevelState = {
+    (1, 1): 3,
+    (1, 2): 6,
+    (1, 3): 9,
+    (2, 1): 12,
+    (2, 2): 15,
+    (3, 1): 18,
+    (3, 2): 21,
+    (3, 3): 24,
+    (4, 1): 27,
+}
+
+
 class MarioLandSettings(EnvSettings):
     def __init__(
         self,
@@ -50,7 +64,9 @@ class MarioLandSettings(EnvSettings):
         ]
 
         self.isEval = isEval
-        self.stateIdx = 0
+        self.cellScore = 0
+        self.cellID = 0
+        self.cellCheckCounter = FRAME_CELL_CHECK
         self.levelStr = ""
         self.evalNoProgress = 0
         self.invincibilityTimer = 0
@@ -68,44 +84,48 @@ class MarioLandSettings(EnvSettings):
 
         engine = create_engine("postgresql+psycopg://postgres:password@localhost/postgres")
         self.stateManager = StateManager(engine)
-        for stateFile in self.stateFiles:
-            with open(stateFile, "rb") as f:
-                self.pyboy.load_state(f)
-                curState = self.gameState()
-                cellHash = self.cell_hash(curState)
+        with open(self.stateFiles[0], "rb") as f:
+            self.pyboy.load_state(f)
+            curState = self.gameState()
+            cellHash = self.cellHash(curState, isInitial=True)
+            if self.stateManager.cell_exists(cellHash):
+                return
 
-                state = f.read()
-                self.stateManager.insert_initial_cell(cellHash, RANDOM_NOOP_FRAMES, state)
+            f.seek(0)
+            state = memoryview(f.read())
+            self.stateManager.insert_initial_cell(cellHash, RANDOM_NOOP_FRAMES, state)
 
-    def reset(self, options: dict[str, Any]) -> Tuple[Any, MarioLandGameState, bool]:
+    def reset(self, options: dict[str, Any]) -> Tuple[Any, MarioLandGameState, bool, Dict[str, Any]]:
         # reset counters
+        self.cellScore = 0
+        self.cellCheckCounter = FRAME_CELL_CHECK
         self.deathCounter = 0
         self.heartCounter = 0
         self.powerupCounter = 0
         self.coinCounter = 0
 
+        state = None
+        maxNOOPs = 0
+        prevAction = None
         if self.isEval:
-            # start at the beginning of the first level
-            self.stateIdx = 0
+            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell()
         else:
-            self.cellID, isInitial, maxNOOPs, state = options["_cell_state"]
+            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_random_cell()
 
-        curState = self._loadLevel()
+        curState = self._loadLevel(state, maxNOOPs, initial=initial)
 
-        return self._reset(curState, True, STARTING_TIME), curState, True
+        return self._reset(curState, True, STARTING_TIME), curState, True, {"_prev_action": prevAction}
 
     def _loadLevel(
-        self, prevState: MarioLandGameState | None = None, transferState: bool = False
+        self,
+        state: memoryview,
+        maxNOOPs: int,
+        initial: bool = False,
+        prevState: MarioLandGameState | None = None,
+        transferState: bool = False,
     ) -> MarioLandGameState:
-        stateFile = self.stateFiles[self.stateIdx]
-        with open(stateFile, "rb") as f:
-            self.pyboy.load_state(f)
-
-        # get checkpoint number from state filename
-        stateFile = basename(splitext(stateFile)[0])
-        world = int(stateFile[0])
-        self.levelStr = f"{world}-{stateFile[2]}{stateFile[6]}"
-        self.pyboy.game_area_mapping(worldTilesets[world])
+        with BytesIO(state) as bs:
+            self.pyboy.load_state(bs)
 
         # set score to 0
         for i in range(3):
@@ -141,7 +161,7 @@ class MarioLandSettings(EnvSettings):
             # can learn to use the powerups; also makes the environment more
             # stochastic
             curState = self.gameState()
-            if random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
+            if initial and random.randint(0, 100) < RANDOM_POWERUP_CHANCE:
                 # 0: small with star
                 # 1: big
                 # 2: big with star
@@ -187,7 +207,7 @@ class MarioLandSettings(EnvSettings):
             # if we're starting from a state with entities do nothing for
             # a random amount of frames to make entity placements varied
             if len(curState.objects) != 0:
-                nopFrames = random.randint(0, RANDOM_NOOP_FRAMES)
+                nopFrames = random.randint(0, maxNOOPs)
                 self.pyboy.tick(count=nopFrames, render=False)
 
         # reset max level progress
@@ -197,6 +217,10 @@ class MarioLandSettings(EnvSettings):
         # reset death counter
         if not self.isEval:
             self.deathCounter = 0
+
+        # set game area mapping
+        self.levelStr = str(curState.world)
+        self.pyboy.game_area_mapping(worldTilesets[curState.world[0]])
 
         return curState
 
@@ -299,15 +323,18 @@ class MarioLandSettings(EnvSettings):
             elif curState.powerupStatus == STATUS_FIRE:
                 levelClear += LEVEL_CLEAR_FIRE_REWARD
 
+            if curState.world == (4, 2):
+                self.cellScore += levelClear
+                return levelClear, curState
+
             # load the next level directly to avoid processing
             # unnecessary frames and the AI playing levels we
             # don't want it to
-            self.stateIdx += 7 - (self.stateIdx % 7)
-            if self.stateIdx >= len(self.stateFiles):
-                return levelClear, curState
-
-            # keep lives and powerup in new level
-            curState = self._loadLevel(prevState=prevState, transferState=True)
+            stateFile = self.stateFiles[worldToNextLevelState[curState.world]]
+            with open(stateFile, "rb") as f:
+                state = memoryview(f.read())
+                # keep lives and powerup in new level
+                curState = self._loadLevel(state, RANDOM_NOOP_FRAMES, prevState=prevState, transferState=True)
             # don't reset state and observation caches so the agent can
             # see that it started a new level
             self._reset(curState, False, STARTING_TIME)
@@ -409,6 +436,37 @@ class MarioLandSettings(EnvSettings):
 
         return reward, curState
 
+    def postStep(
+        self, prevState: MarioLandGameState, curState: MarioLandGameState, action: int, reward: float
+    ):
+        if self.isEval:
+            return
+
+        self.cellScore += reward
+
+        if self.terminated(prevState, curState) or self.truncated(prevState, curState):
+            self.stateManager.record_score(self.cellID, self.cellScore)
+            return
+
+        # only check if this cell is new every N frames to avoid
+        # making DB queries every frame
+        if self.cellCheckCounter != FRAME_CELL_CHECK:
+            self.cellCheckCounter += 1
+            return
+        self.cellCheckCounter = 0
+
+        cellHash = self.cellHash(curState)
+        if cellHash is not None and not self.stateManager.cell_exists(cellHash):
+            with BytesIO() as state:
+                self.pyboy.save_state(state)
+                state.seek(0)
+                # TODO: handle no-op frames with entities
+                try:
+                    self.stateManager.insert_cell(cellHash, action, RANDOM_NOOP_FRAMES, state.getbuffer())
+                    print(f"added cell with hash {cellHash}")
+                except Exception as e:
+                    print(e)
+
     def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> Tuple[MarioLandObject | None, bool]:
         for obj in curState.objects:
             if obj.typeID == TYPE_ID_MOVING_PLATFORM and curState.yPos - 10 == obj.yPos:
@@ -502,8 +560,8 @@ class MarioLandSettings(EnvSettings):
             or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
         )
 
-    def cell_hash(self, curState: MarioLandGameState) -> str | None:
-        if self.onGroundFor != 2:
+    def cellHash(self, curState: MarioLandGameState, isInitial=False) -> str | None:
+        if not isInitial and self.onGroundFor != 2:
             return None
 
         roundedXPos = X_POS_MULTIPLE * floor(curState.xPos / X_POS_MULTIPLE)
@@ -514,7 +572,7 @@ class MarioLandSettings(EnvSettings):
             objectTypes += f"{obj.typeID}|"
 
         input = f"{curState.world}{curState.hardMode}{roundedXPos}{roundedYPos}{self.underground}{curState.powerupStatus}{objectTypes}"
-        return hashlib.md5(input).hexdigest()
+        return hashlib.md5(input.encode("utf-8")).hexdigest()
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
         return curState.gameState in (1, 3)

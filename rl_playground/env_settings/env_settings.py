@@ -9,7 +9,7 @@ class GameState:
         """Used to hold a copy of the previous game state"""
         raise Exception("GameState init not implemented!")
 
-    def stats(self) -> dict | None:
+    def stats(self) -> Dict | None:
         return None
 
 
@@ -18,7 +18,7 @@ class EnvSettings:
         """Used to get hyperparameters"""
         return {}
 
-    def normalize(self) -> (bool, bool):
+    def normalize(self) -> Tuple[bool, bool]:
         """Whether observations and rewards should be normalized or not"""
         return True, True
 
@@ -26,11 +26,11 @@ class EnvSettings:
         """Number of evaluation episodes that should be preformed"""
         return 1
 
-    def reset(self, options: dict[str, Any] | None = None) -> (GameState, bool):
+    def reset(self, options: Dict[str, Any] | None = None) -> Tuple[Any, GameState, bool, Dict[str, Any]]:
         """Reset state when starting a new training run"""
         raise Exception("reset not implemented!")
 
-    def actionSpace(self) -> (List[Any], Space):
+    def actionSpace(self) -> Tuple[List[Any], Space]:
         """Get action space for AI"""
         raise Exception("actionSpace not implemented!")
 
@@ -38,7 +38,11 @@ class EnvSettings:
         """Get observation space for AI"""
         raise Exception("observationSpace not implemented!")
 
-    def reward(self, prevState: GameState) -> (float, GameState):
+    def postStep(self, prevState: GameState, curState: GameState, action: int, reward: float):
+        """Preform bookeeping after a step"""
+        raise Exception("postStep not implemented!")
+
+    def reward(self, prevState: GameState) -> Tuple[float, GameState]:
         """Reward function for the AI"""
         raise Exception("reward not implemented!")
 
@@ -49,7 +53,7 @@ class EnvSettings:
     def observation(self, prevState: GameState, curState: GameState) -> Any:
         raise Exception("observation not implemented!")
 
-    def info(self, gameState: GameState) -> dict[str, Any]:
+    def info(self, gameState: GameState) -> Dict[str, Any]:
         return {}
 
     def terminated(self, prevState: GameState, curState: GameState) -> bool:

@@ -7,7 +7,7 @@ sql:
   - out: rl_playground/go_explore
     plugin: py
     options:
-      package: go_explore
+      package: rl_playground.go_explore
       emit_sync_querier: true
       emit_async_querier: false
       query_parameter_limit: 5
