@@ -16,6 +16,7 @@ from sqlalchemy import create_engine
 
 from rl_playground.env_settings.env_settings import EnvSettings
 from rl_playground.env_settings.super_mario_land.constants import (
+    LEVEL_END_X_POS,
     MARIO_MAX_X_SPEED,
     MARIO_MAX_Y_SPEED,
     MAX_EUCLIDEAN_DISTANCE,
@@ -114,9 +115,6 @@ class MarioLandSettings(EnvSettings):
         self.powerupCounter = 0
         self.coinCounter = 0
 
-        state = None
-        maxNOOPs = 0
-        prevAction = None
         if self.isEval:
             self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell()
         else:
@@ -126,7 +124,16 @@ class MarioLandSettings(EnvSettings):
 
         curState = self._loadLevel(state, maxNOOPs, initial=initial)
 
-        return self._reset(curState, True, STARTING_TIME), curState, True, {"_prev_action": prevAction}
+        timer = STARTING_TIME
+        if not self.isEval:
+            # set the timer to a random time to make the environment more
+            # stochastic; set it to lower values depending on where mario
+            # is in the level is it's completable
+            minTime = STARTING_TIME - int((curState.xPos / LEVEL_END_X_POS[self.levelStr]) * STARTING_TIME)
+            minTime = max(MIN_RANDOM_TIME, minTime)
+            timer = random.randint(minTime, STARTING_TIME)
+
+        return self._reset(curState, True, timer), curState, True, {"_prev_action": prevAction}
 
     def _loadLevel(
         self,
@@ -139,20 +146,13 @@ class MarioLandSettings(EnvSettings):
         with BytesIO(state) as bs:
             self.pyboy.load_state(bs)
 
-        # set score to 0
-        for i in range(3):
-            self.pyboy.memory[SCORE_MEM_VAL + i] = 0
-        for i in range(5):
-            self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + i] = 44
-        self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + 5] = 0
-
-        self._setStartingPos()
-
         livesLeft = 2
         coins = 0
+        score = 0
         if transferState:
             livesLeft = prevState.livesLeft
             coins = prevState.coins
+            score = prevState.score
             if prevState.powerupStatus != STATUS_SMALL:
                 self.pyboy.memory[POWERUP_STATUS_MEM_VAL] = 1
             if prevState.powerupStatus == STATUS_FIRE:
@@ -161,7 +161,7 @@ class MarioLandSettings(EnvSettings):
             curState = self.gameState()
             self._handlePowerup(prevState, curState)
         elif not self.isEval:
-            # make starting lives random to NN can learn to strategically
+            # make starting lives random so NN can learn to strategically
             # handle lives
             livesLeft = random.randint(STARTING_LIVES_MIN, STARTING_LIVES_MAX) - 1
 
@@ -215,6 +215,32 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.memory[COINS_DISPLAY_MEM_VAL] = coins // 10
         self.pyboy.memory[COINS_DISPLAY_MEM_VAL + 1] = coins % 10
 
+        # set score
+        if not self.isEval or score == 0:
+            # set score to 0
+            for i in range(3):
+                self.pyboy.memory[SCORE_MEM_VAL + i] = 0
+            for i in range(5):
+                self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + i] = 44
+            self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + 5] = 0
+        else:
+            scoreHundreds = score // 100
+            scoreTenThousands = score // 10000
+            scoreTens = score - ((scoreTenThousands * 10000) + (scoreHundreds * 100))
+            self.pyboy.memory[SCORE_MEM_VAL] = dec_to_bcm(scoreTens)
+            self.pyboy.memory[SCORE_MEM_VAL + 1] = dec_to_bcm(scoreHundreds)
+            self.pyboy.memory[SCORE_MEM_VAL + 2] = dec_to_bcm(scoreTenThousands)
+
+            paddedScore = f"{score:06}"
+            leadingZerosReplaced = True
+            for i in range(6):
+                digit = paddedScore[i]
+                if leadingZerosReplaced and digit == "0":
+                    self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + i] = 44
+                else:
+                    leadingZerosReplaced = False
+                    self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + i] = int(digit)
+
         if not self.isEval:
             # if we're starting from a state with entities do nothing for
             # a random amount of frames to make entity placements varied
@@ -235,23 +261,6 @@ class MarioLandSettings(EnvSettings):
         self.pyboy.game_area_mapping(worldTilesets[curState.world[0]])
 
         return curState
-
-    def _setStartingPos(self):
-        if self.isEval:
-            return
-
-        # make starting position less deterministic to prevent action memorization
-        startingMovement = random.randint(0, 2)
-        if startingMovement == 1:
-            self.pyboy.send_input(WindowEvent.PRESS_ARROW_LEFT)
-            self.pyboy.tick(render=False)
-            self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
-            self.pyboy.tick(render=False)
-        elif startingMovement == 2:
-            self.pyboy.send_input(WindowEvent.PRESS_ARROW_RIGHT)
-            self.pyboy.tick(render=False)
-            self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
-            self.pyboy.tick(render=False)
 
     def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
         self.evalNoProgress = 0
@@ -311,8 +320,6 @@ class MarioLandSettings(EnvSettings):
                 statusTimer = self.pyboy.memory[STATUS_TIMER_MEM_VAL]
 
             self.pyboy.tick(count=5, render=False)
-
-            self._setStartingPos()
 
             curState = self.gameState()
             # don't reset state and observation caches so the agent can

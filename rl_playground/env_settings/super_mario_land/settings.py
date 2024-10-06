@@ -14,6 +14,7 @@ N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 # Time settings
 MIN_TIME = 10
 STARTING_TIME = 400
+MIN_RANDOM_TIME = 60
 DEATH_TIME_LOSS = 10
 
 # Reward values

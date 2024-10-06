@@ -47,7 +47,7 @@ TIMER_LEVEL_CLEAR = 0xF0
 STAR_TIME = 956
 SHRINK_TIME = 0x50 + 0x40
 
-GAME_STATES_DEAD = (1, 3)
+GAME_STATES_DEAD = (1, 3, 4, 60)
 
 
 class MarioLandGameState(GameState):
@@ -80,8 +80,8 @@ class MarioLandGameState(GameState):
         self.livesLeft = bcm_to_dec(self.pyboy.memory[LIVES_LEFT_MEM_VAL])
         self.coins = bcm_to_dec(self.pyboy.memory[COINS_MEM_VAL])
         self.score = bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL])
-        self.score += bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL] + 1) * 100
-        self.score += bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL] + 2) * 1000
+        self.score += bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL + 1]) * 100
+        self.score += bcm_to_dec(self.pyboy.memory[SCORE_MEM_VAL + 2]) * 10000
         self.statusTimer = self.pyboy.memory[STATUS_TIMER_MEM_VAL]
         self.gameState = self.pyboy.memory[GAME_STATE_MEM_VAL]
         self.onGround = self.pyboy.memory[MARIO_ON_GROUND_MEM_VAL] == 1
