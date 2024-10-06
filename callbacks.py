@@ -122,9 +122,7 @@ class RecordAndEvalCallback(BaseCallback):
             if self.verbose >= 1:
                 print("Evaluating model checkpoint")
 
-            # tell the base env that an evaluation is starting
-            self.eval_env.set_options({"_eval_starting": True})
-            self.eval_env.reset()
+            self.orchestrator.preEval()
 
             episode_rewards, episode_lengths = evaluate_policy(
                 self.model,

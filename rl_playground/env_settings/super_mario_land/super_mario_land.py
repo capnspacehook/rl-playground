@@ -64,6 +64,7 @@ class MarioLandSettings(EnvSettings):
         ]
 
         self.isEval = isEval
+        self.maxLevel = "1-1"
         self.cellScore = 0
         self.cellID = 0
         self.cellCheckCounter = FRAME_CELL_CHECK
@@ -84,7 +85,7 @@ class MarioLandSettings(EnvSettings):
 
         engine = create_engine("postgresql+psycopg://postgres:password@localhost/postgres")
         self.stateManager = StateManager(engine)
-        with open(self.stateFiles[0], "rb") as f:
+        with open(self.stateFiles[1], "rb") as f:
             self.pyboy.load_state(f)
             curState = self.gameState()
             cellHash = self.cellHash(curState, isInitial=True)
@@ -93,9 +94,18 @@ class MarioLandSettings(EnvSettings):
 
             f.seek(0)
             state = memoryview(f.read())
-            self.stateManager.insert_initial_cell(cellHash, RANDOM_NOOP_FRAMES, state)
+            self.stateManager.insert_initial_cell(cellHash, RANDOM_NOOP_FRAMES, "1-1", state)
 
     def reset(self, options: dict[str, Any]) -> Tuple[Any, MarioLandGameState, bool, Dict[str, Any]]:
+        if options is not None:
+            if "_update_max_level" in options:
+                # a level was cleared in the eval that hasn't been cleared
+                # before, update the max level
+                self.maxLevel = options["_update_max_level"]
+
+            curState = self.gameState()
+            return self.observation(options["_prevState"], curState), curState, False, {}
+
         # reset counters
         self.cellScore = 0
         self.cellCheckCounter = FRAME_CELL_CHECK
@@ -110,7 +120,9 @@ class MarioLandSettings(EnvSettings):
         if self.isEval:
             self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell()
         else:
-            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_random_cell()
+            self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_random_cell(
+                self.maxLevel
+            )
 
         curState = self._loadLevel(state, maxNOOPs, initial=initial)
 
@@ -219,7 +231,7 @@ class MarioLandSettings(EnvSettings):
             self.deathCounter = 0
 
         # set game area mapping
-        self.levelStr = str(curState.world)
+        self.levelStr = f"{curState.world[0]}-{curState.world[1]}"
         self.pyboy.game_area_mapping(worldTilesets[curState.world[0]])
 
         return curState
@@ -330,7 +342,7 @@ class MarioLandSettings(EnvSettings):
             # load the next level directly to avoid processing
             # unnecessary frames and the AI playing levels we
             # don't want it to
-            stateFile = self.stateFiles[worldToNextLevelState[curState.world]]
+            stateFile = self.stateFiles[worldToNextLevelState[curState.world] + 1]
             with open(stateFile, "rb") as f:
                 state = memoryview(f.read())
                 # keep lives and powerup in new level
@@ -373,7 +385,7 @@ class MarioLandSettings(EnvSettings):
             curPlatPos = np.array((curState.xPos, curState.yPos))
             platDistances = []
             for obj in curState.objects:
-                if movPlatObj == obj or obj.typeID != TYPE_ID_MOVING_PLATFORM or curState.xPos > obj.xPos:
+                if movPlatObj == obj or obj.typeID != MOVING_PLATFORM_TYPE_ID or curState.xPos > obj.xPos:
                     continue
                 platDistances.append(np.linalg.norm(curPlatPos - np.array((obj.xPos, obj.yPos))))
 
@@ -460,16 +472,42 @@ class MarioLandSettings(EnvSettings):
             with BytesIO() as state:
                 self.pyboy.save_state(state)
                 state.seek(0)
-                # TODO: handle no-op frames with entities
+
+                maxNOOPs = RANDOM_NOOP_FRAMES
+
+                # ensure loading from the state won't instantly kill mario
+                if any((obj.typeID in ENEMY_TYPE_IDS for obj in curState.objects)):
+                    self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
+                    self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
+                    self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_A)
+
+                    unsafeState = False
+                    # if mario dies without moving in less than 2 seconds
+                    # don't save the state; we don't want to load states
+                    # that will result in an unpreventable death
+                    for _ in range(20):
+                        self.pyboy.tick(count=6, render=False)
+                        if self.pyboy.memory[GAME_STATE_MEM_VAL] in GAME_STATES_DEAD:
+                            unsafeState = True
+                            break
+
+                    self.pyboy.load_state(state)
+                    state.seek(0)
+                    if unsafeState:
+                        return
+
+                    maxNOOPs = RANDOM_NOOP_FRAMES_WITH_ENEMIES
+
                 try:
-                    self.stateManager.insert_cell(cellHash, action, RANDOM_NOOP_FRAMES, state.getbuffer())
+                    section = f"{curState.world[0]}-{curState.world[1]}"
+                    self.stateManager.insert_cell(cellHash, action, maxNOOPs, section, state.getbuffer())
                     print(f"added cell with hash {cellHash}")
                 except Exception as e:
                     print(e)
 
     def _standingOnMovingPlatform(self, curState: MarioLandGameState) -> Tuple[MarioLandObject | None, bool]:
         for obj in curState.objects:
-            if obj.typeID == TYPE_ID_MOVING_PLATFORM and curState.yPos - 10 == obj.yPos:
+            if obj.typeID == MOVING_PLATFORM_TYPE_ID and curState.yPos - 10 == obj.yPos:
                 return obj, True
         return None, False
 
@@ -569,13 +607,15 @@ class MarioLandSettings(EnvSettings):
 
         objectTypes = ""
         for obj in curState.objects:
-            objectTypes += f"{obj.typeID}|"
+            objRoundedXPos = X_POS_MULTIPLE * floor(obj.xPos / X_POS_MULTIPLE)
+            objRoundedYPos = Y_POS_MULTIPLE * floor(obj.yPos / Y_POS_MULTIPLE)
+            objectTypes += f"{obj.typeID}{objRoundedXPos}{objRoundedYPos}"
 
         input = f"{curState.world}{curState.hardMode}{roundedXPos}{roundedYPos}{self.underground}{curState.powerupStatus}{objectTypes}"
         return hashlib.md5(input.encode("utf-8")).hexdigest()
 
     def _isDead(self, curState: MarioLandGameState) -> bool:
-        return curState.gameState in (1, 3)
+        return curState.gameState in GAME_STATES_DEAD
 
     def actionSpace(self):
         actions = [

@@ -4,6 +4,7 @@ CREATE TABLE cells (
     action     INTEGER,
     max_no_ops INTEGER,
     initial    BOOLEAN NOT NULL,
+    section    TEXT NOT NULL,
     visits     INTEGER NOT NULL DEFAULT 0,
     state      BYTEA   NOT NULL
 );

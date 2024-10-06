@@ -10,7 +10,7 @@ sql:
       package: rl_playground.go_explore
       emit_sync_querier: true
       emit_async_querier: false
-      query_parameter_limit: 5
+      query_parameter_limit: 6
 plugins:
 - name: py
   wasm:

@@ -76,7 +76,9 @@ class EnvSettings:
 class Orchestrator:
     def __init__(self, env: VecEnv) -> None:
         self.env = env
-        self.n_called = 0
+
+    def preEval(self):
+        pass
 
     def processEvalInfo(self, info: Dict[str, Any]):
         pass
@@ -85,4 +87,4 @@ class Orchestrator:
         return ()
 
     def postEval(self):
-        self.n_called += 1
+        pass

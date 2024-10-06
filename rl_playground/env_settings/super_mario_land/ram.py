@@ -31,7 +31,6 @@ COINS_MEM_VAL = 0xFFFA
 COINS_DISPLAY_MEM_VAL = 0x9829
 LIVES_LEFT_DISPLAY_MEM_VAL = 0x9806
 
-
 MOVING_LEFT = 0x20
 CROUCHING_POSE = 24
 OBJ_TYPE_STAR = 0x34
@@ -47,6 +46,8 @@ TIMER_DEATH = 0x90
 TIMER_LEVEL_CLEAR = 0xF0
 STAR_TIME = 956
 SHRINK_TIME = 0x50 + 0x40
+
+GAME_STATES_DEAD = (1, 3)
 
 
 class MarioLandGameState(GameState):
@@ -165,7 +166,7 @@ def convertYPos(relYPos: int) -> int:
     return yPos
 
 
-TYPE_ID_MOVING_PLATFORM = 7
+MOVING_PLATFORM_TYPE_ID = 7
 _typeIDs = [
     ((0x0,), 1),  # goomba
     ((0x2, 0x55), 2),  # pirana plant
@@ -173,7 +174,7 @@ _typeIDs = [
     ((0x5,), 4),  # koopa bomb
     ((0x8,), 5),  # sphinx boss
     ((0x9,), 6),  # spitting plant
-    ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), TYPE_ID_MOVING_PLATFORM),  # moving platforms
+    ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), MOVING_PLATFORM_TYPE_ID),  # moving platforms
     ((0xC, 0x35), 8),  # crush blocks
     ((0xE,), 9),  # moth/jumping spider
     ((0x10,), 10),  # fish
@@ -197,6 +198,13 @@ _typeIDs = [
     ((0x4B,), 28),  # bullet bill | and 0x4A?
     ((0x56, 0x57), 29),  # zombie
 ]
+ENEMY_TYPE_IDS = [typeID[1] for typeID in _typeIDs]
+ENEMY_TYPE_IDS.remove(MOVING_PLATFORM_TYPE_ID)
+ENEMY_TYPE_IDS.remove(11)
+ENEMY_TYPE_IDS.remove(17)
+ENEMY_TYPE_IDS.remove(18)
+ENEMY_TYPE_IDS.remove(19)
+ENEMY_TYPE_IDS.remove(23)
 
 typeIDMap = {}
 for gameIDs, obsID in _typeIDs:

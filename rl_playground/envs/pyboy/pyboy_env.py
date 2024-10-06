@@ -83,8 +83,11 @@ class PyBoyEnv(Env):
             prevAction = results.get("_prev_action")
             if prevAction is not None:
                 actions = self.actions[prevAction]
-                for action in actions:
-                    self.button_is_pressed[action] = True
+                for button in actions:
+                    if button == WindowEvent.PASS:
+                        continue
+                    release = self._release_button[button]
+                    self.pyboy.send_input(release)
 
         return obs, {}
 
