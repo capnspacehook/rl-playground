@@ -73,6 +73,8 @@ class MarioLandSettings(EnvSettings):
         self.evalNoProgress = 0
         self.invincibilityTimer = 0
         self.underground = False
+        self.heartGetXPos = None
+        self.heartFarming = False
 
         self.deathCounter = 0
         self.heartCounter = 0
@@ -149,6 +151,7 @@ class MarioLandSettings(EnvSettings):
         livesLeft = 2
         coins = 0
         score = 0
+
         if transferState:
             livesLeft = prevState.livesLeft
             coins = prevState.coins
@@ -256,6 +259,9 @@ class MarioLandSettings(EnvSettings):
         if not self.isEval:
             self.deathCounter = 0
 
+        self.heartGetXPos = None
+        self.heartFarming = False
+
         # set game area mapping
         self.levelStr = f"{curState.world[0]}-{curState.world[1]}"
         self.pyboy.game_area_mapping(worldTilesets[curState.world[0]])
@@ -264,8 +270,8 @@ class MarioLandSettings(EnvSettings):
 
     def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
         self.evalNoProgress = 0
-        self.onGroundFor = 0
         self.underground = False
+        self.onGroundFor = 0
 
         # reset the game state cache
         if resetCaches:
@@ -428,9 +434,22 @@ class MarioLandSettings(EnvSettings):
         if powerup > 0:
             self.powerupCounter += 1
 
-        # reward getting 1-up
-        heart = (curState.livesLeft - prevState.livesLeft) * HEART_REWARD
-        self.heartCounter += curState.livesLeft - prevState.livesLeft
+        # discourage heart farming
+        heart = 0
+        if curState.livesLeft - prevState.livesLeft != 0:
+            if (
+                self.heartGetXPos is not None
+                and curState.xPos + HEART_FARM_X_POS_MULTIPLE >= self.heartGetXPos
+                and curState.xPos - HEART_FARM_X_POS_MULTIPLE <= self.heartGetXPos
+            ):
+                self.heartFarming = True
+                heart = HEART_FARM_PUNISHMENT
+            else:
+                # reward getting 1-up
+                heart = (curState.livesLeft - prevState.livesLeft) * HEART_REWARD
+                self.heartCounter += curState.livesLeft - prevState.livesLeft
+
+            self.heartGetXPos = curState.xPos
 
         # reward damaging or killing a boss
         boss = 0
@@ -600,7 +619,8 @@ class MarioLandSettings(EnvSettings):
         # isn't played twice. If 4-2 is completed end the episode, that's
         # final normal level so there's no level to start after it.
         return (
-            curState.hasStar  # TODO: remove once star bug has been fixed
+            self.heartFarming
+            or curState.hasStar  # TODO: remove once star bug has been fixed
             or (self.isEval and self.evalNoProgress == 1200)
             or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
         )

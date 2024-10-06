@@ -35,7 +35,8 @@ MUSHROOM_REWARD = 15  # 1000 score
 FLOWER_REWARD = 15  # 1000 score
 # TODO: make reward when star bug is fixed/mitigated
 STAR_REWARD = -35  # 1000 score
-HEART_REWARD = 30
+HEART_REWARD = 30  # 1000 score
+HEART_FARM_PUNISHMENT = -60
 MOVING_PLATFORM_DISTANCE_REWARD_MAX = 0.5
 MOVING_PLATFORM_X_REWARD_COEF = 0.15
 MOVING_PLATFORM_Y_REWARD_COEF = 1.25
@@ -56,13 +57,8 @@ RANDOM_POWERUP_CHANCE = 25
 STARTING_LIVES_MIN = 1
 STARTING_LIVES_MAX = 3
 
-# Training level selection settings
-N_WARMUP_EVALS = 10
-EVAL_WINDOW = 15
-STD_COEF = 1.5
-# probabilities before normalization
-MIN_PROB = 0.01
-MAX_PROB = 0.99
+# Heart farming detection settings
+HEART_FARM_X_POS_MULTIPLE = 15
 
 # Cell selection settings
 X_POS_MULTIPLE = 150
