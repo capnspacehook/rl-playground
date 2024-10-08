@@ -20,6 +20,22 @@ SELECT EXISTS(
 """
 
 
+GET_CELL = """-- name: get_cell \\:one
+SELECT id, action, max_no_ops, initial, state
+FROM cells
+WHERE id = :p1
+"""
+
+
+@dataclasses.dataclass()
+class GetCellRow:
+    id: int
+    action: Optional[int]
+    max_no_ops: Optional[int]
+    initial: bool
+    state: memoryview
+
+
 GET_FIRST_CELL = """-- name: get_first_cell \\:one
 SELECT id, action, max_no_ops, initial, state
 FROM cells
@@ -147,6 +163,18 @@ class Querier:
         if row is None:
             return None
         return row[0]
+
+    def get_cell(self, *, id: int) -> Optional[GetCellRow]:
+        row = self._conn.execute(sqlalchemy.text(GET_CELL), {"p1": id}).first()
+        if row is None:
+            return None
+        return GetCellRow(
+            id=row[0],
+            action=row[1],
+            max_no_ops=row[2],
+            initial=row[3],
+            state=row[4],
+        )
 
     def get_first_cell(self) -> Optional[GetFirstCellRow]:
         row = self._conn.execute(sqlalchemy.text(GET_FIRST_CELL)).first()

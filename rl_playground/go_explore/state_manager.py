@@ -57,3 +57,9 @@ class StateManager(object):
             q.insert_cell_score(cell_id=cell_id, score=decimal.Decimal(score))
             q.increment_cell_visit(id=cell_id)
             conn.commit()
+
+    def get_cell(self, id: int) -> Tuple[int, int, int, bool, memoryview]:
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            result = q.get_cell(id=id)
+            return result.id, result.action, result.max_no_ops, result.initial, result.state

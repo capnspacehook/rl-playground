@@ -40,17 +40,18 @@ def train(args):
     saveDir = Path("checkpoints", "train", gameName, runName)
     saveDir.mkdir(parents=True)
 
-    def makeEnv(seed: int, rank: int, isEval: bool = False, envKwargs: Dict = {}):
+    def makeEnv(seed: int, envID: int, isEval: bool = False, envKwargs: Dict = {}):
         def _init():
             _, env, _ = createPyboyEnv(
                 args.rom,
+                envID,
                 args.render,
                 speed=args.emulation_speed,
                 isEval=isEval,
                 outputDir=saveDir,
                 envKwargs=envKwargs,
             )
-            env.reset(seed=seed + rank)
+            env.reset(seed=seed + envID)
             return env
 
         set_random_seed(seed)

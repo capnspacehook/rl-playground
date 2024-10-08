@@ -74,6 +74,11 @@ FROM cells
 ORDER BY id
 LIMIT 1;
 
+-- name: GetCell :one
+SELECT id, action, max_no_ops, initial, state
+FROM cells
+WHERE id = $1;
+
 -- name: InsertCell :one
 INSERT INTO cells (
     hash, action, max_no_ops, initial, section, state

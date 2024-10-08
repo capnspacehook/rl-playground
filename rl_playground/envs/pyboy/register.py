@@ -18,6 +18,7 @@ from rl_playground.envs.pyboy.wrappers import FrameSkip, Recorder
 
 def createPyboyEnv(
     rom: Path,
+    envID: int | None = None,
     render: bool = False,
     speed: int = 0,
     isEval: bool = False,
@@ -43,7 +44,7 @@ def createPyboyEnv(
     envSettings = None
     orchestrator = None
 
-    envSettings = MarioLandSettings(pyboy, isEval, **envKwargs)
+    envSettings = MarioLandSettings(pyboy, envID, isEval, **envKwargs)
     orchestrator = MarioLandOrchestrator
 
     env = PyBoyEnv(

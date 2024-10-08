@@ -128,51 +128,48 @@ def getEntityIDsAndInfo(
     marioPos = np.array((curState.xPos, curState.yPos))
 
     entities = []
-    if len(curState.objects) != 0:
-        for i in range(len(curState.objects)):
-            obj = curState.objects[i]
+    for obj in curState.objects:
+        # attempt to find the same object in the previous frame's state
+        # so the speed and acceleration can be calculated
+        if len(prevState.objects) != 0:
+            prevObj = findObjectInPrevState(obj, prevState)
+            if prevObj is not None:
+                obj.rawXSpeed = obj.xPos - prevObj.xPos
+                obj.rawYSpeed = obj.yPos - prevObj.yPos
+                rawXSpeeds = [prevObj.rawXSpeed, obj.rawXSpeed]
+                rawYSpeeds = [prevObj.rawYSpeed, obj.rawYSpeed]
+                obj.meanXSpeed, obj.meanYSpeed = calculateMeanSpeeds(states, obj, rawXSpeeds, rawYSpeeds)
+                obj.xAccel = obj.meanXSpeed - prevObj.meanXSpeed
+                obj.yAccel = obj.meanYSpeed - prevObj.meanYSpeed
 
-            # attempt to find the same object in the previous frame's state
-            # so the speed and acceleration can be calculated
-            if len(prevState.objects) != 0:
-                prevObj = findObjectInPrevState(obj, prevState)
-                if prevObj is not None:
-                    obj.rawXSpeed = obj.xPos - prevObj.xPos
-                    obj.rawYSpeed = obj.yPos - prevObj.yPos
-                    rawXSpeeds = [prevObj.rawXSpeed, obj.rawXSpeed]
-                    rawYSpeeds = [prevObj.rawYSpeed, obj.rawYSpeed]
-                    obj.meanXSpeed, obj.meanYSpeed = calculateMeanSpeeds(states, obj, rawXSpeeds, rawYSpeeds)
-                    obj.xAccel = obj.meanXSpeed - prevObj.meanXSpeed
-                    obj.yAccel = obj.meanYSpeed - prevObj.meanYSpeed
+        # calculate speed for offscreen objects for when they come
+        # onscreen but don't add them to the observation
+        if obj.relXPos > MAX_REL_X_POS or obj.yPos > MAX_Y_POS:
+            continue
 
-            # calculate speed for offscreen objects for when they come
-            # onscreen but don't add them to the observation
-            if obj.relXPos > MAX_REL_X_POS or obj.yPos > MAX_Y_POS:
-                continue
-
-            xDistance = obj.xPos - curState.xPos
-            yDistance = obj.yPos - curState.yPos
-            euclideanDistance = np.linalg.norm(marioPos - np.array((obj.xPos, obj.yPos)))
-            entities.append(
-                (
-                    obj.typeID,
-                    np.array(
-                        [
-                            scaledEncoding(obj.relXPos, MAX_REL_X_POS, True),
-                            scaledEncoding(obj.yPos, MAX_Y_POS, True),
-                            scaledEncoding(xDistance, MAX_X_DISTANCE, False),
-                            scaledEncoding(yDistance, MAX_Y_DISTANCE, False),
-                            scaledEncoding(euclideanDistance, MAX_EUCLIDEAN_DISTANCE, True),
-                            scaledEncoding(obj.meanXSpeed, ENTITY_MAX_MEAN_X_SPEED, False),
-                            scaledEncoding(obj.meanYSpeed, ENTITY_MAX_MEAN_Y_SPEED, False),
-                            scaledEncoding(obj.xAccel, ENTITY_MAX_MEAN_X_SPEED, False),
-                            scaledEncoding(obj.yAccel, ENTITY_MAX_MEAN_Y_SPEED, False),
-                            scaledEncoding(math.atan2(obj.meanXSpeed, obj.meanYSpeed), math.pi, False),
-                        ],
-                        dtype=np.float32,
-                    ),
-                )
+        xDistance = obj.xPos - curState.xPos
+        yDistance = obj.yPos - curState.yPos
+        euclideanDistance = np.linalg.norm(marioPos - np.array((obj.xPos, obj.yPos)))
+        entities.append(
+            (
+                obj.typeID,
+                np.array(
+                    [
+                        scaledEncoding(obj.relXPos, MAX_REL_X_POS, True),
+                        scaledEncoding(obj.yPos, MAX_Y_POS, True),
+                        scaledEncoding(xDistance, MAX_X_DISTANCE, False),
+                        scaledEncoding(yDistance, MAX_Y_DISTANCE, False),
+                        scaledEncoding(euclideanDistance, MAX_EUCLIDEAN_DISTANCE, True),
+                        scaledEncoding(obj.meanXSpeed, ENTITY_MAX_MEAN_X_SPEED, False),
+                        scaledEncoding(obj.meanYSpeed, ENTITY_MAX_MEAN_Y_SPEED, False),
+                        scaledEncoding(obj.xAccel, ENTITY_MAX_MEAN_X_SPEED, False),
+                        scaledEncoding(obj.yAccel, ENTITY_MAX_MEAN_Y_SPEED, False),
+                        scaledEncoding(math.atan2(obj.meanXSpeed, obj.meanYSpeed), math.pi, False),
+                    ],
+                    dtype=np.float32,
+                ),
             )
+        )
 
     # sort entities by euclidean distance to mario
     sortedEntities = sorted(entities, key=lambda o: o[1][2])

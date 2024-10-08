@@ -50,10 +50,12 @@ class MarioLandSettings(EnvSettings):
     def __init__(
         self,
         pyboy: PyBoy,
+        envID: int | None,
         isEval: bool,
         stateDir: Path = Path("states", "super_mario_land"),
     ):
         self.pyboy = pyboy
+        self.envID = envID
 
         self.gameStateCache: Deque[MarioLandGameState] = deque(maxlen=N_STATE_STACK)
         self.observationCaches = [
@@ -124,6 +126,7 @@ class MarioLandSettings(EnvSettings):
             self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_random_cell(
                 self.maxLevel
             )
+            # print(f"{self.envID}: loaded cell {self.cellID}")
 
         curState = self._loadLevel(state, maxNOOPs, initial=initial)
 
