@@ -70,6 +70,7 @@ class MarioLandSettings(EnvSettings):
         self.cellID = 0
         self.cellCheckCounter = FRAME_CELL_CHECK
         self.levelStr = ""
+        self.evalStuck = 0
         self.evalNoProgress = 0
         self.invincibilityTimer = 0
         self.underground = False
@@ -228,6 +229,8 @@ class MarioLandSettings(EnvSettings):
             self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + 5] = 0
         else:
             scoreHundreds = score // 100
+            if scoreHundreds > 100:
+                scoreHundreds -= 100
             scoreTenThousands = score // 10000
             scoreTens = score - ((scoreTenThousands * 10000) + (scoreHundreds * 100))
             self.pyboy.memory[SCORE_MEM_VAL] = dec_to_bcm(scoreTens)
@@ -269,6 +272,7 @@ class MarioLandSettings(EnvSettings):
         return curState
 
     def _reset(self, curState: MarioLandGameState, resetCaches: bool, timer: int) -> Dict[str, Any]:
+        self.evalStuck = 0
         self.evalNoProgress = 0
         self.underground = False
         self.onGroundFor = 0
@@ -424,6 +428,11 @@ class MarioLandSettings(EnvSettings):
         # keep track of how long the agent is idle so we can end early
         # in an evaluation
         if self.isEval:
+            if curState.xPos == prevState.xPos:
+                self.evalStuck += 1
+            else:
+                self.evalStuck = 0
+
             if curState.levelProgressMax == prevState.levelProgressMax:
                 self.evalNoProgress += 1
             else:
@@ -614,6 +623,7 @@ class MarioLandSettings(EnvSettings):
         return self._isDead(curState) and curState.livesLeft == 0
 
     def truncated(self, prevState: MarioLandGameState, curState: MarioLandGameState) -> bool:
+        # If Mario has not moved in 10s, end the eval episode.
         # If no forward progress has been made in 20s, end the eval episode.
         # If the level is completed end this episode so the next level
         # isn't played twice. If 4-2 is completed end the episode, that's
@@ -621,7 +631,7 @@ class MarioLandSettings(EnvSettings):
         return (
             self.heartFarming
             or curState.hasStar  # TODO: remove once star bug has been fixed
-            or (self.isEval and self.evalNoProgress == 1200)
+            or (self.isEval and (self.evalStuck == 600 or self.evalNoProgress == 1200))
             or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
         )
 

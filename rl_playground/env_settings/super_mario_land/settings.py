@@ -78,7 +78,7 @@ def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float
 
 PPO_HYPERPARAMS = {
     "policy": "MultiInputPolicy",
-    "batch_size": 512,  # TODO: try 256
+    "batch_size": 512,  # minibatch size
     "clip_range": 0.2,
     "ent_coef": 7e-03,
     "gae_lambda": 0.98,
@@ -86,7 +86,7 @@ PPO_HYPERPARAMS = {
     "learning_rate": 3e-05,
     "max_grad_norm": 1,
     "n_epochs": 5,
-    "n_steps": 2048,
+    "n_steps": 2048,  # horizon = n_steps * n_envs
     "vf_coef": 0.5,
     "policy_kwargs": dict(
         activation_fn=nn.ReLU,
@@ -95,7 +95,12 @@ PPO_HYPERPARAMS = {
             # will be changed later
             device="auto",
         ),
-        net_arch=dict(pi=[2048, 2048], vf=[2048, 2048]),
+        net_arch=dict(
+            # policy NN size and layers
+            pi=[2048, 2048],
+            # value NN size and layers
+            vf=[2048, 2048],
+        ),
         normalize_images=False,
         share_features_extractor=True,
     ),
