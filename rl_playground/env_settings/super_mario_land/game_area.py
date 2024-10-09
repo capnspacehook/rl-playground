@@ -80,13 +80,14 @@ world_4_blocks = (
 world_1_jump_through_blocks = (18, [360, 361, 362])
 world_2_jump_through_blocks = (18, [352, 353, 355])
 moving_block = (19, [239])
-crush_blocks = (20, [221, 222, 223])
-falling_block = (21, [238])
-pushable_blocks = (22, [128, 130, 354])  # 354 invisible on 2-2
-question_block = (23, [129])
+crush_blocks = (20, [221, 222])
+falling_stalactites = (21, [223])
+falling_block = (22, [238])
+pushable_blocks = (23, [128, 130, 354])  # 354 invisible on 2-2
+question_block = (24, [129])
 # add pipes here if they should be separate
-spike = (24, [237])
-lever = (25, [225])  # Lever for level end
+spike = (25, [237])
+lever = (26, [225])  # Lever for level end
 
 # Enemies
 goomba = (35, [144])
@@ -122,14 +123,28 @@ fist_rock = (35, sharedEnemy2)
 flying_rock = (35, [171, 187])
 falling_spider = (35, sharedEnemy4)
 jumping_spider = (35, sharedEnemy1)
-zombie = (35, sharedEnemy1)
+zombie = (35, [*sharedEnemy1, 168, 169])
 fire_worm = (35, sharedEnemy2)
 spitting_plant = (35, sharedEnemy3)
 bouncing_boulder_tiles = [194, 195, 210, 211]
 bouncing_boulder = (41, bouncing_boulder_tiles)
 
+# Dead enemies
+deadSharedEnemy1 = [168, 169]
+deadSharedEnemy2 = [184, 185]
+deadSharedEnemy3 = [216, 217]
+dead_moth = (36, deadSharedEnemy1)
+dead_flying_moth = (36, [200, 201])
+dead_sphinx = (36, deadSharedEnemy2)
+dead_robot = (36, deadSharedEnemy3)
+dead_flying_rock = (36, [173])
+dead_fist_rock = (36, deadSharedEnemy2)
+dead_falling_spider = (36, deadSharedEnemy3)
+dead_jumping_spider = (36, deadSharedEnemy1)
+dead_fire_worm = (36, deadSharedEnemy2)
+
 # Bosses
-big_sphinx = (51, [198, 199, 201, 202, 203, 204, 205, 206, 214, 215, 217, 218, 219])
+big_sphinx = (51, [171, 187, 198, 199, 202, 203, 204, 205, 206, 214, 215, 218, 219, 220])
 big_sphinx_fire = (40, [196, 197, 212, 213])
 big_fist_rock = (52, [188, 189, 204, 205, 174, 175, 190, 191, 206, 207])
 
@@ -143,6 +158,7 @@ base_tiles = [
     heart,
     moving_block,
     crush_blocks,
+    falling_stalactites,
     falling_block,
     pushable_blocks,
     question_block,
@@ -180,9 +196,12 @@ worldTilesets = {
             world_1_blocks,
             world_1_jump_through_blocks,
             moth,
+            dead_moth,
             flying_moth,
+            dead_flying_moth,
             flying_moth_arrow,
             sphinx,
+            dead_sphinx,
             big_sphinx,
             big_sphinx_fire,
         ]
@@ -196,6 +215,7 @@ worldTilesets = {
             bone_fish,
             seahorse,
             robot,
+            dead_robot,
         ]
     ),
     3: _buildCompressedTileset(
@@ -203,11 +223,15 @@ worldTilesets = {
             *base_tiles,
             world_1_2_3_pipes,
             world_3_blocks,
-            fist_rock,
             flying_rock,
+            dead_flying_rock,
+            fist_rock,
+            dead_fist_rock,
             bouncing_boulder,
             falling_spider,
+            dead_falling_spider,
             jumping_spider,
+            dead_jumping_spider,
             big_fist_rock,
         ]
     ),
@@ -217,8 +241,9 @@ worldTilesets = {
             world_4_pipes,
             world_4_blocks,
             zombie,
-            fire_worm,
             spitting_plant,
+            fire_worm,
+            dead_fire_worm,
         ]
     ),
 }

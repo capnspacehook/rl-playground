@@ -103,6 +103,7 @@ class MarioLandGameState(GameState):
         for i in range(10):
             addr = OBJECTS_START_MEM_VAL | (i * 0x10)
             objType = self.pyboy.memory[addr]
+            # skip empty objects
             if objType == 255 or objType not in typeIDMap:
                 continue
 
@@ -197,6 +198,19 @@ _typeIDs = [
     ((0x49,), 27),  # bill launcher
     ((0x4B,), 28),  # bullet bill | and 0x4A?
     ((0x56, 0x57), 29),  # zombie
+
+    # ((
+    #     0xD,  # ?
+    #     0xF,  # moth
+    #     0x11, # ?
+    #     0x12, # ?
+    #     0x15, # ?
+    #     0x19, # ?
+    #     0x1C, # robot and falling spider
+    #     0x3D, # flying rock
+    #     0x40, # sphinx and fist rock
+    #     0x43, # flying moth
+    # ), 30) # dead enemies
 ]
 ENEMY_TYPE_IDS = [typeID[1] for typeID in _typeIDs]
 ENEMY_TYPE_IDS.remove(MOVING_PLATFORM_TYPE_ID)
