@@ -85,6 +85,7 @@ class MarioLandSettings(EnvSettings):
         self.coinCounter = 0
 
         self.levelProgressMax = 0
+        self.levelProgressSinceDeath = 0
         self.onGroundFor = 0
 
         self.stateFiles = sorted([join(stateDir, f) for f in listdir(stateDir) if isfile(join(stateDir, f))])
@@ -289,6 +290,10 @@ class MarioLandSettings(EnvSettings):
         self.underground = False
         self.onGroundFor = 0
 
+        # reset level progress since death
+        self.levelProgressSinceDeath = curState.xPos
+        curState.levelProgressSinceDeath = curState.xPos
+
         # reset the game state cache
         if resetCaches:
             [self.gameStateCache.append(curState) for _ in range(N_STATE_STACK)]
@@ -319,6 +324,8 @@ class MarioLandSettings(EnvSettings):
         curState = self.gameState()
         self.levelProgressMax = max(self.levelProgressMax, curState.xPos)
         curState.levelProgressMax = self.levelProgressMax
+        self.levelProgressSinceDeath = max(prevState.levelProgressSinceDeath, curState.xPos)
+        curState.levelProgressSinceDeath = self.levelProgressSinceDeath
         self.gameStateCache.append(curState)
 
         # return flat punishment on mario's death
@@ -445,7 +452,7 @@ class MarioLandSettings(EnvSettings):
             else:
                 self.evalStuck = 0
 
-            if curState.levelProgressMax == prevState.levelProgressMax:
+            if curState.levelProgressSinceDeath == prevState.levelProgressSinceDeath:
                 self.evalNoProgress += 1
             else:
                 self.evalNoProgress = 0

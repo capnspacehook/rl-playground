@@ -66,6 +66,7 @@ class MarioLandGameState(GameState):
 
         # will be set later
         self.levelProgressMax = 0
+        self.levelProgressSinceDeath = 0
         self.rawXSpeed = 0
         self.rawYSpeed = 0
         self.meanXSpeed = 0
