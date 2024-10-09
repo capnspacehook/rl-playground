@@ -20,7 +20,7 @@ MAX_EUCLIDEAN_DISTANCE = 265
 POWERUP_STATUSES = 4
 MAX_INVINCIBILITY_TIME = 960
 
-MAX_ENTITY_ID = 30
+MAX_ENTITY_ID = 33
 
 # max number of objects that can be on screen at once (excluding mario)
 N_ENTITIES = 10

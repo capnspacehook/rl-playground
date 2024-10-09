@@ -168,6 +168,9 @@ def convertYPos(relYPos: int) -> int:
 
 
 MOVING_PLATFORM_TYPE_ID = 7
+FLYING_MOTH_ARROW_TYPE_ID = 13
+BONE_FISH_TYPE_ID = 10
+SEAHORSE_TYPE_ID = 18
 _typeIDs = [
     ((0x0,), 1),  # goomba
     ((0x2, 0x55), 2),  # pirana plant
@@ -178,27 +181,30 @@ _typeIDs = [
     ((0xA, 0xB, 0x38, 0x39, 0x3A, 0x3B), MOVING_PLATFORM_TYPE_ID),  # moving platforms
     ((0xC, 0x35), 8),  # crush blocks
     ((0xE,), 9),  # moth/jumping spider
-    ((0x10,), 10),  # fish
+    ((0x10,), BONE_FISH_TYPE_ID),  # bone fish
     ((0x13, 0x14), 11),  # lift blocks
     ((0x16, 0x17, 0x18), 12),  # robot
-    ((0x1E, 0x23, 0x45, 0x51, 0x54), 13),  # projectiles
-    ((0x24,), 14),  # seahorse
-    ((0x25,), 15),  # falling spider
-    ((0x27,), 16),  # explosion?
-    ((0x28, 0x29), 17),  # mushroom
-    ((0x2D, 0x2E), 18),  # fire flower
-    ((0x2A, 0x2B), 19),  # heart (1-up)
-    ((0x31,), 20),  # fist rock
-    ((0x32,), 21),  # fist rock boss
-    ((0x33, 0x47), 22),  # bouncing boulder
-    ((0x34,), 23),  # star
-    ((0x3C,), 24),  # flying rock
-    ((0x3F,), 25),  # sphinx/dragon
-    ((0x42,), 26),  # flying moth
-    ((0x49,), 27),  # bill launcher
-    ((0x4B,), 28),  # bullet bill | and 0x4A?
-    ((0x56, 0x57), 29),  # zombie
-
+    ((0x45,), 13),  # flying moth arrow
+    ((0x23,), 14),  # fireball
+    ((0x1E,), 15),  # fire breath
+    ((0x51,), 16),  # plant spore
+    ((0x54,), 17),  # circling fireball
+    ((0x24,), SEAHORSE_TYPE_ID),  # seahorse
+    ((0x25,), 19),  # falling spider
+    ((0x27,), 20),  # explosion?
+    ((0x28, 0x29), 21),  # mushroom
+    ((0x2D, 0x2E), 22),  # fire flower
+    ((0x2A, 0x2B), 23),  # heart (1-up)
+    ((0x31,), 24),  # fist rock
+    ((0x32,), 25),  # fist rock boss
+    ((0x33, 0x47), 26),  # bouncing boulder
+    ((0x34,), 27),  # star
+    ((0x3C,), 28),  # flying rock
+    ((0x3F,), 29),  # sphinx/dragon
+    ((0x42,), 30),  # flying moth
+    ((0x49,), 31),  # bill launcher
+    ((0x4B,), 32),  # bullet bill | and 0x4A?
+    ((0x56, 0x57), 33),  # zombie
     # ((
     #     0xD,  # ?
     #     0xF,  # moth
@@ -215,10 +221,10 @@ _typeIDs = [
 ENEMY_TYPE_IDS = [typeID[1] for typeID in _typeIDs]
 ENEMY_TYPE_IDS.remove(MOVING_PLATFORM_TYPE_ID)
 ENEMY_TYPE_IDS.remove(11)
-ENEMY_TYPE_IDS.remove(17)
-ENEMY_TYPE_IDS.remove(18)
-ENEMY_TYPE_IDS.remove(19)
+ENEMY_TYPE_IDS.remove(21)
+ENEMY_TYPE_IDS.remove(22)
 ENEMY_TYPE_IDS.remove(23)
+ENEMY_TYPE_IDS.remove(27)
 
 typeIDMap = {}
 for gameIDs, obsID in _typeIDs:
