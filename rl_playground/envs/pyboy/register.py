@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 from typing import Dict
 
@@ -28,16 +27,18 @@ def createPyboyEnv(
     outputDir: Path = "",
     envKwargs: Dict = {},
 ):
-    # silence useless pyboy logs
-    logging.getLogger("pyboy.pyboy").setLevel(logging.ERROR)
+    debug = False
+    logLvl = "ERROR"
     if isPlaytest:
-        logging.getLogger("pyboy.plugins.debug").setLevel(logging.INFO)
+        debug = True
+        logLvl = "INFO"
 
     pyboy = PyBoy(
         rom,
         window="SDL2" if render else "null",
         scale=4,
-        debug=False,
+        debug=debug,
+        log_level=logLvl,
     )
     pyboy.set_emulation_speed(speed)
 

@@ -106,16 +106,16 @@ class MarioLandGameState(GameState):
             if objType == 255 or objType not in typeIDMap:
                 continue
 
-            relXPos = self.pyboy.memory[addr] + 0x3
+            relXPos = self.pyboy.memory[addr + 0x3]
             xPos = levelBlock * 16 + real + relXPos
-            relYPos = self.pyboy.memory[addr] + 0x2
+            relYPos = self.pyboy.memory[addr + 0x2]
             yPos = convertYPos(relYPos)
             objType = typeIDMap[objType]
             self.objects.append(MarioLandObject(objType, relXPos, xPos, yPos))
 
             if objType == BOSS1_TYPE or objType == BOSS2_TYPE:
                 self.bossActive = True
-                self.bossHealth = self.pyboy.memory[addr] | 0xC
+                self.bossHealth = self.pyboy.memory[addr | 0xC]
 
         powerupStatus = self.pyboy.memory[POWERUP_STATUS_MEM_VAL]
         hasFireFlower = self.pyboy.memory[HAS_FIRE_FLOWER_MEM_VAL]
