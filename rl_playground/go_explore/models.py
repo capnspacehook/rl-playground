@@ -10,11 +10,13 @@ from typing import Optional
 class Cell:
     id: int
     hash: str
+    hash_input: str
     action: Optional[int]
     max_no_ops: Optional[int]
     initial: bool
     section: str
     visits: int
+    invalid: bool
     state: memoryview
 
 

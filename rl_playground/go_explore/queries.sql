@@ -10,12 +10,15 @@ WITH mean_scores AS (
     -- get mean of last 10 scores of all cells in certain sections
     SELECT cell_id, AVG(score) AS mean_score
     FROM (
-        SELECT cs.cell_id, cs.score, ROW_NUMBER() OVER (PARTITION BY cs.cell_id ORDER BY cs.id DESC) AS rn
+        SELECT 
+            cs.cell_id,
+            cs.score,
+            ROW_NUMBER() OVER (PARTITION BY cs.cell_id ORDER BY cs.id DESC) AS rn
         FROM cell_scores AS cs
         JOIN cells AS c
         ON c.id = cs.cell_id
-        WHERE c.section <= $1
-    ) AS desc_scores
+        WHERE c.section <= $1 and c.invalid = FALSE
+    ) AS q
     WHERE rn <= 10
     GROUP BY cell_id
 ), norm_scores AS (
@@ -45,7 +48,12 @@ WITH mean_scores AS (
                 SELECT MAX(norm_score) AS max_score
                 FROM norm_scores
             ) - SUM(ns.norm_score)
-        ) AS weight
+        ) +
+        CASE
+            -- add 5% of the max possible weight to cells in the current section
+            WHEN c.section = $1 THEN 10
+            ELSE 0 
+        END AS weight
     FROM cells AS c
     JOIN norm_scores AS ns
     ON ns.cell_id = c.id
@@ -81,9 +89,9 @@ WHERE id = $1;
 
 -- name: InsertCell :one
 INSERT INTO cells (
-    hash, action, max_no_ops, initial, section, state
+    hash, hash_input, action, max_no_ops, initial, section, state
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
+    $1, $2, $3, $4, $5, $6, $7
 )
 ON CONFLICT DO NOTHING
 RETURNING id;
@@ -99,3 +107,23 @@ INSERT INTO cell_scores (
 UPDATE cells
 SET visits = visits + 1
 WHERE id = $1;
+
+-- name: SetCellInvalid :exec
+UPDATE cells
+SET invalid = TRUE
+where id = $1;
+
+-- name: DeleteOldCellScores :exec
+WITH ranked_scores AS (
+    SELECT 
+        id,
+        cell_id,
+        ROW_NUMBER() OVER (PARTITION BY cell_id ORDER BY id DESC) AS rn
+    FROM cell_scores
+)
+DELETE FROM cell_scores
+WHERE id IN (
+    SELECT id
+    FROM ranked_scores
+    WHERE rn > 10
+);

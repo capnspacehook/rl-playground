@@ -15,22 +15,38 @@ class StateManager(object):
             q = Querier(conn)
             return q.cell_exists(hash=hash)
 
-    def insert_initial_cell(self, hash: str, max_no_ops: int | None, section: str, state: memoryview):
+    def insert_initial_cell(
+        self, hash: str, hash_input: str, max_no_ops: int | None, section: str, state: memoryview
+    ):
         with self.engine.connect() as conn:
             q = Querier(conn)
             id = q.insert_cell(
-                hash=hash, action=None, max_no_ops=max_no_ops, initial=True, section=section, state=state
+                hash=hash,
+                hash_input=hash_input,
+                action=None,
+                max_no_ops=max_no_ops,
+                initial=True,
+                section=section,
+                state=state,
             )
             if id is None:
                 return
             q.insert_cell_score(cell_id=id, score=decimal.Decimal(0))
             conn.commit()
 
-    def insert_cell(self, hash: str, action: int, max_no_ops: int | None, section: str, state: memoryview):
+    def insert_cell(
+        self, hash: str, hash_input: str, action: int, max_no_ops: int | None, section: str, state: memoryview
+    ):
         with self.engine.connect() as conn:
             q = Querier(conn)
             id = q.insert_cell(
-                hash=hash, action=action, max_no_ops=max_no_ops, initial=False, section=section, state=state
+                hash=hash,
+                hash_input=hash_input,
+                action=action,
+                max_no_ops=max_no_ops,
+                initial=False,
+                section=section,
+                state=state,
             )
             if id is None:
                 return
@@ -63,3 +79,15 @@ class StateManager(object):
             q = Querier(conn)
             result = q.get_cell(id=id)
             return result.id, result.action, result.max_no_ops, result.initial, result.state
+
+    def set_cell_invalid(self, id: int):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.set_cell_invalid(id=id)
+            conn.commit()
+
+    def delete_old_cell_scores(self):
+        with self.engine.connect() as conn:
+            q = Querier(conn)
+            q.delete_old_cell_scores()
+            conn.commit()

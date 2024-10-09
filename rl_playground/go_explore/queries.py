@@ -20,6 +20,23 @@ SELECT EXISTS(
 """
 
 
+DELETE_OLD_CELL_SCORES = """-- name: delete_old_cell_scores \\:exec
+WITH ranked_scores AS (
+    SELECT 
+        id,
+        cell_id,
+        ROW_NUMBER() OVER (PARTITION BY cell_id ORDER BY id DESC) AS rn
+    FROM cell_scores
+)
+DELETE FROM cell_scores
+WHERE id IN (
+    SELECT id
+    FROM ranked_scores
+    WHERE rn > 10
+)
+"""
+
+
 GET_CELL = """-- name: get_cell \\:one
 SELECT id, action, max_no_ops, initial, state
 FROM cells
@@ -58,12 +75,15 @@ WITH mean_scores AS (
     -- get mean of last 10 scores of all cells in certain sections
     SELECT cell_id, AVG(score) AS mean_score
     FROM (
-        SELECT cs.cell_id, cs.score, ROW_NUMBER() OVER (PARTITION BY cs.cell_id ORDER BY cs.id DESC) AS rn
+        SELECT 
+            cs.cell_id,
+            cs.score,
+            ROW_NUMBER() OVER (PARTITION BY cs.cell_id ORDER BY cs.id DESC) AS rn
         FROM cell_scores AS cs
         JOIN cells AS c
         ON c.id = cs.cell_id
-        WHERE c.section <= :p1
-    ) AS desc_scores
+        WHERE c.section <= :p1 and c.invalid = FALSE
+    ) AS q
     WHERE rn <= 10
     GROUP BY cell_id
 ), norm_scores AS (
@@ -93,7 +113,12 @@ WITH mean_scores AS (
                 SELECT MAX(norm_score) AS max_score
                 FROM norm_scores
             ) - SUM(ns.norm_score)
-        ) AS weight
+        ) +
+        CASE
+            -- add 5% of the max possible weight to cells in the current section
+            WHEN c.section = :p1 THEN 10
+            ELSE 0 
+        END AS weight
     FROM cells AS c
     JOIN norm_scores AS ns
     ON ns.cell_id = c.id
@@ -136,9 +161,9 @@ WHERE id = :p1
 
 INSERT_CELL = """-- name: insert_cell \\:one
 INSERT INTO cells (
-    hash, action, max_no_ops, initial, section, state
+    hash, hash_input, action, max_no_ops, initial, section, state
 ) VALUES (
-    :p1, :p2, :p3, :p4, :p5, :p6
+    :p1, :p2, :p3, :p4, :p5, :p6, :p7
 )
 ON CONFLICT DO NOTHING
 RETURNING id
@@ -154,6 +179,13 @@ INSERT INTO cell_scores (
 """
 
 
+SET_CELL_INVALID = """-- name: set_cell_invalid \\:exec
+UPDATE cells
+SET invalid = TRUE
+where id = :p1
+"""
+
+
 class Querier:
     def __init__(self, conn: sqlalchemy.engine.Connection):
         self._conn = conn
@@ -163,6 +195,9 @@ class Querier:
         if row is None:
             return None
         return row[0]
+
+    def delete_old_cell_scores(self) -> None:
+        self._conn.execute(sqlalchemy.text(DELETE_OLD_CELL_SCORES))
 
     def get_cell(self, *, id: int) -> Optional[GetCellRow]:
         row = self._conn.execute(sqlalchemy.text(GET_CELL), {"p1": id}).first()
@@ -203,14 +238,15 @@ class Querier:
     def increment_cell_visit(self, *, id: int) -> None:
         self._conn.execute(sqlalchemy.text(INCREMENT_CELL_VISIT), {"p1": id})
 
-    def insert_cell(self, *, hash: str, action: Optional[int], max_no_ops: Optional[int], initial: bool, section: str, state: memoryview) -> Optional[int]:
+    def insert_cell(self, *, hash: str, hash_input: str, action: Optional[int], max_no_ops: Optional[int], initial: bool, section: str, state: memoryview) -> Optional[int]:
         row = self._conn.execute(sqlalchemy.text(INSERT_CELL), {
             "p1": hash,
-            "p2": action,
-            "p3": max_no_ops,
-            "p4": initial,
-            "p5": section,
-            "p6": state,
+            "p2": hash_input,
+            "p3": action,
+            "p4": max_no_ops,
+            "p5": initial,
+            "p6": section,
+            "p7": state,
         }).first()
         if row is None:
             return None
@@ -218,3 +254,6 @@ class Querier:
 
     def insert_cell_score(self, *, cell_id: int, score: decimal.Decimal) -> None:
         self._conn.execute(sqlalchemy.text(INSERT_CELL_SCORE), {"p1": cell_id, "p2": score})
+
+    def set_cell_invalid(self, *, id: int) -> None:
+        self._conn.execute(sqlalchemy.text(SET_CELL_INVALID), {"p1": id})

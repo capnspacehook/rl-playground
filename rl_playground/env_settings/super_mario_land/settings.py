@@ -3,6 +3,11 @@ from typing import Callable, Union
 import torch.nn as nn
 
 from rl_playground.env_settings.super_mario_land.extractor import MarioLandExtractor
+from rl_playground.env_settings.super_mario_land.ram import (
+    FLYING_MOTH_ARROW_TYPE_ID,
+    BONE_FISH_TYPE_ID,
+    SEAHORSE_TYPE_ID,
+)
 
 # Observation settings
 N_GAME_AREA_STACK = 6  # number of game area observaions to stack
@@ -14,7 +19,6 @@ N_STATE_STACK = 6  # number of games states to use to calculate mean speeds
 # Time settings
 MIN_TIME = 10
 STARTING_TIME = 400
-MIN_RANDOM_TIME = 60
 DEATH_TIME_LOSS = 10
 
 # Reward values
@@ -51,11 +55,12 @@ LEVEL_CLEAR_BIG_REWARD = 5
 LEVEL_CLEAR_FIRE_REWARD = 10
 
 # Random env settings
-RANDOM_NOOP_FRAMES = 60
-RANDOM_NOOP_FRAMES_WITH_ENEMIES = 10
+RANDOM_NOOP_FRAMES = 10
+RANDOM_NOOP_FRAMES_WITH_ENEMIES = 20
 RANDOM_POWERUP_CHANCE = 25
 STARTING_LIVES_MIN = 1
 STARTING_LIVES_MAX = 3
+MIN_RANDOM_TIME = 60
 
 # Heart farming detection settings
 HEART_FARM_X_POS_MULTIPLE = 15
@@ -63,7 +68,10 @@ HEART_FARM_X_POS_MULTIPLE = 15
 # Cell selection settings
 X_POS_MULTIPLE = 150
 Y_POS_MULTIPLE = 20
-FRAME_CELL_CHECK = 8
+ENTITY_X_POS_MULTIPLE = 200
+ENTITY_Y_POS_MULTIPLE = 40
+FRAME_CELL_CHECK = 30
+ENTITIES_IGNORE_Y_POS = [FLYING_MOTH_ARROW_TYPE_ID, BONE_FISH_TYPE_ID, SEAHORSE_TYPE_ID]
 
 
 def linear_schedule(initial_value: Union[float, str]) -> Callable[[float], float]:
