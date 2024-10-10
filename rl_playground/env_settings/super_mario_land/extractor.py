@@ -15,41 +15,38 @@ class MarioLandExtractor(BaseFeaturesExtractor):
         observationSpace: spaces.Dict,
         device: str,
         activationFn: nn.Module = nn.ReLU,
-        cnnHiddenLayers: int = 128,
+        gameAreaEmbeddingDim: int = 4,
         marioHiddenLayers: int = 64,
-        embeddingDimensions: int = 8,
+        entityEmbeddingDim: int = 4,
         entityHiddenLayers: int = 64,
     ) -> None:
+        # we will set the actual features_dim later once we know the
+        # output size of the CNN
+        super().__init__(observationSpace, features_dim=1)
+
         gameArea = observationSpace[GAME_AREA_OBS]
-        gameAreaStack, xDim, yDim = gameArea.shape
         marioInfo = observationSpace[MARIO_INFO_OBS]
-        entityIDs = observationSpace[ENTITY_ID_OBS]
         entityInfos = observationSpace[ENTITY_INFO_OBS]
         scalar = observationSpace[SCALAR_OBS]
 
-        featuresDim = (
-            cnnHiddenLayers
-            + (marioInfo.shape[0] * marioHiddenLayers)
-            + (entityInfos.shape[0] * 10 * entityHiddenLayers)
-            + (scalar.shape[0] * scalar.shape[1])
-        )
-        super().__init__(observationSpace, features_dim=featuresDim)
+        # account for 0 in number of embeddings
+        self.gameAreaEmbedding = nn.Embedding(MAX_TILE + 1, gameAreaEmbeddingDim, device=device)
 
-        # gameArea (nStack, 16, 20)
         self.gameAreaCNN = nn.Sequential(
-            nn.Conv2d(gameAreaStack, 32, kernel_size=2, stride=1, padding=0, device=device),
+            nn.Conv2d(
+                gameAreaEmbeddingDim * gameArea.shape[0],
+                32,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                device=device,
+            ),
             activationFn(),
-            # max pool to downsample
-            nn.AdaptiveMaxPool2d(output_size=(xDim // 2, yDim // 2)),
-            nn.Conv2d(32, 32, kernel_size=2, stride=1, padding=0, device=device),
+            nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1, device=device),
             activationFn(),
             nn.Flatten(),
         )
-        cnnOutputSize = _computeShape(gameArea, th.float32, device, self.gameAreaCNN)
-        self.gameAreaFC = nn.Sequential(
-            nn.Linear(cnnOutputSize, cnnHiddenLayers, device=device),
-            activationFn(),
-        )
+        cnnOutputSize = self._computeCNNShape(gameArea, device)
 
         self.marioFC = nn.Sequential(
             nn.Linear(marioInfo.shape[1], marioHiddenLayers, device=device),
@@ -58,19 +55,31 @@ class MarioLandExtractor(BaseFeaturesExtractor):
             activationFn(),
         )
 
-        self.entityIDEmbedding = nn.Embedding(entityIDs.high[0][0], embeddingDimensions, device=device)
+        # account for 0 in number of embeddings
+        self.entityIDEmbedding = nn.Embedding(MAX_ENTITY_ID + 1, entityEmbeddingDim, device=device)
 
         self.entityFC = nn.Sequential(
-            nn.Linear(entityInfos.shape[2] + embeddingDimensions, entityHiddenLayers, device=device),
+            nn.Linear(entityInfos.shape[2] + entityEmbeddingDim, entityHiddenLayers, device=device),
             activationFn(),
             nn.Linear(entityHiddenLayers, entityHiddenLayers, device=device),
             activationFn(),
         )
 
+        self._features_dim = (
+            cnnOutputSize
+            + (marioInfo.shape[0] * marioHiddenLayers)
+            + (entityInfos.shape[0] * 10 * entityHiddenLayers)
+            + (scalar.shape[0] * scalar.shape[1])
+        )
+
     def forward(self, observations: TensorDict) -> th.Tensor:
-        # normalize game area
-        gameArea = observations[GAME_AREA_OBS].to(th.float32) / float(MAX_TILE)
-        gameArea = self.gameAreaFC(self.gameAreaCNN(gameArea))
+        gameArea = observations[GAME_AREA_OBS].to(th.int)
+        gameArea = self.gameAreaEmbedding(gameArea).to(th.float32)
+        # move embedding dimension to be after stacked dimension
+        gameArea = gameArea.permute(0, 4, 1, 2, 3)
+        # flatten embedding and stack dim
+        gameArea = th.flatten(gameArea, start_dim=1, end_dim=2)
+        gameArea = self.gameAreaCNN(gameArea)
 
         marioInfo = observations[MARIO_INFO_OBS]
         mario = self.marioFC(marioInfo)
@@ -90,8 +99,10 @@ class MarioLandExtractor(BaseFeaturesExtractor):
 
         return allFeatures
 
-
-def _computeShape(space: spaces.Space, dtype: Any, device: Any, mod: nn.Module) -> int:
-    with th.no_grad():
-        t = th.as_tensor(space.sample()[None], device=device).to(dtype)
-        return mod(t).shape[1]
+    def _computeCNNShape(self, space: spaces.Space, device: Any) -> int:
+        with th.no_grad():
+            t = th.as_tensor(space.sample()[None], device=device).to(th.int)
+            e = self.gameAreaEmbedding(t).to(th.float32)
+            e = e.permute(0, 4, 1, 2, 3)
+            e = th.flatten(e, start_dim=1, end_dim=2)
+            return self.gameAreaCNN(e).shape[1]

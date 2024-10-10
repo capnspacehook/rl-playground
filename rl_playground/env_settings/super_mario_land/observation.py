@@ -16,7 +16,7 @@ def observationSpace() -> spaces.Dict:
     return spaces.Dict(
         {
             GAME_AREA_OBS: spaces.Box(
-                low=1,
+                low=0,
                 high=MAX_TILE,
                 shape=(N_GAME_AREA_STACK, GAME_AREA_HEIGHT, GAME_AREA_WIDTH),
                 dtype=np.uint8,
@@ -25,7 +25,7 @@ def observationSpace() -> spaces.Dict:
                 low=0, high=1, shape=(N_MARIO_OBS_STACK, MARIO_INFO_SIZE), dtype=np.float32
             ),
             ENTITY_ID_OBS: spaces.Box(
-                low=1, high=MAX_ENTITY_ID, shape=(N_ENTITY_OBS_STACK, N_ENTITIES), dtype=np.uint8
+                low=0, high=MAX_ENTITY_ID, shape=(N_ENTITY_OBS_STACK, N_ENTITIES), dtype=np.uint8
             ),
             ENTITY_INFO_OBS: spaces.Box(
                 low=0, high=1, shape=(N_ENTITY_OBS_STACK, N_ENTITIES, ENTITY_INFO_SIZE), dtype=np.float32

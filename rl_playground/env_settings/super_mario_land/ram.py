@@ -173,6 +173,7 @@ FLYING_MOTH_ARROW_TYPE_ID = 13
 BONE_FISH_TYPE_ID = 10
 SEAHORSE_TYPE_ID = 18
 _typeIDs = [
+    # starts at 1 so 0 can function as 'no entity' when padded
     ((0x0,), 1),  # goomba
     ((0x2, 0x55), 2),  # pirana plant
     ((0x4,), 3),  # koopa
