@@ -4,7 +4,7 @@ from math import floor
 from io import BytesIO
 from typing import Any, Deque, Dict, List, Tuple, Tuple
 from os import listdir
-from os.path import basename, isfile, join, splitext
+from os.path import isfile, join
 import random
 from pathlib import Path
 
@@ -256,16 +256,22 @@ class MarioLandSettings(EnvSettings):
                     leadingZerosReplaced = False
                     self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + i] = int(digit)
 
-        if not self.isEval:
+        if not self.isEval and len(curState.objects) != 0:
             # do nothing for a random amount of frames to make entity
             # placements varied and the environment more stochastic
             nopFrames = random.randint(0, maxNOOPs)
-            self.pyboy.tick(count=nopFrames, render=False)
-            curState = self.gameState()
-            # set cell as invalid just in case a cell was added that
-            # will cause mario to die almost immediately
-            if self._isDead(curState):
-                self.stateManager.set_cell_invalid(self.cellID)
+            if nopFrames != 0:
+                # release any buttons in case any where being held before
+                self.pyboy.send_input(WindowEvent.RELEASE_ARROW_LEFT)
+                self.pyboy.send_input(WindowEvent.RELEASE_ARROW_RIGHT)
+                self.pyboy.send_input(WindowEvent.RELEASE_BUTTON_A)
+
+                self.pyboy.tick(count=nopFrames, render=False)
+                curState = self.gameState()
+                # set cell as invalid just in case a cell was added that
+                # will cause mario to die almost immediately
+                if not curState.onGround or self._isDead(curState):
+                    self.stateManager.set_cell_invalid(self.cellID)
 
         # reset max level progress
         self.levelProgressMax = curState.xPos
@@ -546,10 +552,10 @@ class MarioLandSettings(EnvSettings):
                             break
 
                     self.pyboy.load_state(state)
-                    state.seek(0)
                     if unsafeState:
                         return
 
+                    state.seek(0)
                     maxNOOPs = RANDOM_NOOP_FRAMES_WITH_ENEMIES
 
                 try:
@@ -661,10 +667,18 @@ class MarioLandSettings(EnvSettings):
             return None, None
 
         roundedXPos = X_POS_MULTIPLE * floor(curState.xPos / X_POS_MULTIPLE)
-        roundedYPos = Y_POS_MULTIPLE * floor(curState.yPos / Y_POS_MULTIPLE)
+        # avoid tons of different cells from mario just riding a platform
+        # that are basically the same
+        roundedYPos = 0
+        _, onMovingPlat = self._standingOnMovingPlatform(curState)
+        if not onMovingPlat:
+            roundedYPos = Y_POS_MULTIPLE * floor(curState.yPos / Y_POS_MULTIPLE)
 
         objectTypes = ""
-        for obj in curState.objects:
+        # sort objects by the type ID to prevent different cells that
+        # are basically the same but have objects in a different order
+        objects = sorted(curState.objects, key=lambda o: o.typeID)
+        for obj in objects:
             objRoundedXPos = ENTITY_X_POS_MULTIPLE * floor(obj.xPos / ENTITY_X_POS_MULTIPLE)
             objRoundedYPos = 0
             if obj.typeID not in ENTITIES_IGNORE_Y_POS:

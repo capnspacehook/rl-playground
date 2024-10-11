@@ -63,8 +63,8 @@ def createPyboyEnv(
         env = Recorder(env, episode_num=envSettings.evalEpisodes())
     env = FrameSkip(env, skip=4)
     # make evaluations strictly deterministic
-    if not isEval:
-        env = StickyActionV0(env, 0.25)
+    # if not isEval:
+    #     env = StickyActionV0(env, 0.25)
 
     # check_env(env)
 

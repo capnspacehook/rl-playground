@@ -186,7 +186,7 @@ _typeIDs = [
     ((0x10,), BONE_FISH_TYPE_ID),  # bone fish
     ((0x13, 0x14), 11),  # lift blocks
     ((0x16, 0x17, 0x18), 12),  # robot
-    ((0x45,), 13),  # flying moth arrow
+    ((0x45,), FLYING_MOTH_ARROW_TYPE_ID),  # flying moth arrow
     ((0x23,), 14),  # fireball
     ((0x1E,), 15),  # fire breath
     ((0x51,), 16),  # plant spore
