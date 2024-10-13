@@ -72,6 +72,7 @@ class MarioLandSettings(EnvSettings):
         self.cellID = 0
         self.cellCheckCounter = 0
         self.levelStr = ""
+        self.invalidLevel = False
         self.evalStuck = 0
         self.evalNoProgress = 0
         self.invincibilityTimer = 0
@@ -126,6 +127,9 @@ class MarioLandSettings(EnvSettings):
         self.powerupCounter = 0
         self.coinCounter = 0
 
+        # reset invalid level flag
+        self.invalidLevel = False
+
         if self.isEval:
             self.cellID, prevAction, maxNOOPs, initial, state = self.stateManager.get_first_cell()
         else:
@@ -136,8 +140,13 @@ class MarioLandSettings(EnvSettings):
 
         curState = self._loadLevel(state, maxNOOPs, initial=initial)
 
+        # prevent extremely rare circumstances where an unsupported level
+        # is loaded while during the no-op frames
+        if self.levelStr not in LEVEL_END_X_POS:
+            self.invalidLevel = True
+
         timer = STARTING_TIME
-        if not self.isEval:
+        if not self.isEval and not self.invalidLevel:
             # set the timer to a random time to make the environment more
             # stochastic; set it to lower values depending on where mario
             # is in the level is it's completable
@@ -237,11 +246,9 @@ class MarioLandSettings(EnvSettings):
                 self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + i] = 44
             self.pyboy.memory[SCORE_DISPLAY_MEM_VAL + 5] = 0
         else:
-            scoreHundreds = score // 100
-            if scoreHundreds > 100:
-                scoreHundreds -= 100
+            scoreTens = score % 100
+            scoreHundreds = (score // 100) % 100
             scoreTenThousands = score // 10000
-            scoreTens = score - ((scoreTenThousands * 10000) + (scoreHundreds * 100))
             self.pyboy.memory[SCORE_MEM_VAL] = dec_to_bcm(scoreTens)
             self.pyboy.memory[SCORE_MEM_VAL + 1] = dec_to_bcm(scoreHundreds)
             self.pyboy.memory[SCORE_MEM_VAL + 2] = dec_to_bcm(scoreTenThousands)
@@ -406,8 +413,12 @@ class MarioLandSettings(EnvSettings):
             movement = xSpeed * BACKWARD_PUNISHMENT_COEF
 
         score = (curState.score - prevState.score) * SCORE_REWARD_COEF
-        coins = (curState.coins - prevState.coins) * COIN_REWARD
-        self.coinCounter += curState.coins - prevState.coins
+        if curState.coins >= prevState.coins:
+            collectedCoins = curState.coins - prevState.coins
+        else:
+            collectedCoins = (99 - prevState.coins) + curState.coins
+        coins = (collectedCoins) * COIN_REWARD
+        self.coinCounter += collectedCoins
 
         # the game registers mario as on the ground 1 or 2 frames before
         # he actually is to change his pose
@@ -660,6 +671,7 @@ class MarioLandSettings(EnvSettings):
             or curState.hasStar  # TODO: remove once star bug has been fixed
             or (self.isEval and (self.evalStuck == 600 or self.evalNoProgress == 1200))
             or (curState.statusTimer == TIMER_LEVEL_CLEAR and curState.world == (4, 2))
+            or self.invalidLevel
         )
 
     def cellHash(self, curState: MarioLandGameState, isInitial=False) -> Tuple[str | None, str | None]:
